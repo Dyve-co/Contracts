@@ -1,10 +1,10 @@
 const hre = require("hardhat");
 
 async function main() {
-  const Dyve = await hre.ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy();
-  await dyve.deployed();
-  console.log("Dyve Deployed:", dyve.address);
+  const Lender = await hre.ethers.getContractFactory("LenderNft");
+  const lender = await Lender.deploy();
+  await lender.deployed();
+  console.log("Lender NFT contract deployed", lender.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

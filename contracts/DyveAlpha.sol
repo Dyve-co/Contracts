@@ -16,21 +16,25 @@ interface IERC721 {
  * @notice The Dyve Contract to handle short Selling of NFTs.
  * @dev implements the IERC721Receiver so we can use the safeTransferFrom mechanism.
  */
-contract Dyve is IERC721Receiver {
+contract DyveAlpha is IERC721Receiver {
 
   event ListingEvent(address indexed lender, uint dyveId, uint nftcollectionID);
   event Borrow(address indexed borrower, address indexed lender, uint dyveId, uint nftcollectionID);
-  event BuyToShort(address indexed borrower, address indexed lender, uint dyveId, uint nftcollectionID);
+  event BorrowToShort(address indexed borrower, address indexed lender, uint dyveId, uint nftcollectionID);
   event Close(address indexed borrower, address indexed lender, uint dyveId, uint originalNFTcollectionID, uint returnedNFTCollectionID);
   event Expired(address indexed borrower, address indexed lender, uint dyveId);
   event Cancel(address indexed borrower, address indexed lender, uint dyveId, uint NFTcollectionID);
-  event Update(uint dyveId, uint256 newFee);
+  event Update(uint dyveId, uint256 newFee, uint256 newCollateral, uint256 newExpiryDateTime);
 
   uint counter_dyveID;  // store new listings uniquely @TODO: Should we represent this ID as a hash of the listing?
   // All listed NFTs up for lending
   mapping(uint256 => Listing) public listings;
   mapping(uint256 => bool) public claimed_collateral; // track which Dyve listing has claimed collateral
   mapping(bytes32 => bool) public nft_has_open_listing;  // track an open listing against indivual NFTs, (individual NFT) => (dyveID)
+  mapping(address => uint256[]) public user_listings;
+  // hash the users address and store the number of listings against that hashed address
+  // Every new listing will be stored as a hash of the address and the new counter against the dyveID
+  // mapping(bytes32 => uint256) public user_listings;  
 
   // The NFT's listing status
   enum ListingStatus {
@@ -58,7 +62,7 @@ contract Dyve is IERC721Receiver {
    * @notice Get listing details.
    * @param dyveID the Dyve ID.
    */
-  function getListing(uint dyveID) mustExist(dyveID) external view returns (Listing memory) {
+  function getListing(uint dyveID) external view returns (Listing memory) {
     return listings[dyveID];
   }
 
@@ -74,6 +78,20 @@ contract Dyve is IERC721Receiver {
   }
 
   /**
+   * @notice Get all user listings.
+   * @dev This runs the risk of gas limit exceeded if the user has a large enough number of listings
+   */
+  function getAllUserListings() external view returns (Listing[] memory) {
+      uint256[] memory userListings = user_listings[msg.sender];
+      Listing[] memory _listings = new Listing[](userListings.length);
+      for (uint i; i < userListings.length; i++) {
+        _listings[i] = listings[userListings[i]];
+      }
+      return _listings;
+  }
+
+  /**
+   * @dev UI will trigger the approval of transferring the NFT first
    * @notice List the NFT on Dyve as lender for someone to borrow and short sell.
    * @param _NFTCollectionAddress The NFT Collection address.
    * @param _NFTCollectionID The NFT Collection identifier from the _NFTCollectionAddress.
@@ -82,9 +100,6 @@ contract Dyve is IERC721Receiver {
    */
   function list(address _NFTCollectionAddress, uint _NFTCollectionID, uint _required_collateral, uint _fee) external {
       require(!nft_has_open_listing[_hashNFT(_NFTCollectionAddress, _NFTCollectionID)], "Already listed!");
-
-      counter_dyveID += 1;
-      nft_has_open_listing[_hashNFT(_NFTCollectionAddress, _NFTCollectionID)] = true;
 
       listings[counter_dyveID] = Listing({
             dyveId: counter_dyveID,
@@ -97,12 +112,17 @@ contract Dyve is IERC721Receiver {
             fee: _fee,
             status: ListingStatus.LISTED
       });
-
-      // Step 2: Transfer NFT from seller to us
-      // @dev THIS REQUIRES THAT WE HAVE CALLED THE NFT CONTRACT TO APPROVE US ON BEHALF OF THE USER!
-      IERC721(_NFTCollectionAddress).safeTransferFrom(msg.sender, address(this), _NFTCollectionID);
+      user_listings[msg.sender].push(counter_dyveID);
+      // uint256 userListingsCount = user_listings[keccak256(abi.encodePacked(msg.sender))];
+      // @TODO: generalize the hashing function from the _hashNFT private function
+      // user_listings[keccak256(abi.encodePacked(msg.sender, userListingsCount + 1))] = counter_dyveID;
+      // user_listings[keccak256(abi.encodePacked(msg.sender))] = userListingsCount + 1;
 
       emit ListingEvent(msg.sender, counter_dyveID, _NFTCollectionID);
+
+      counter_dyveID += 1;
+
+      nft_has_open_listing[_hashNFT(_NFTCollectionAddress, _NFTCollectionID)] = true;
   }
 
   /**
@@ -117,7 +137,7 @@ contract Dyve is IERC721Receiver {
    * @param dyveID the unique Dyve ID. Must be at least something that exists.
    */
   modifier mustExist(uint dyveID) {
-      require(dyveID <= counter_dyveID, "This listing does not exist!");
+      require(dyveID < counter_dyveID, "This listing does not exist!");
       _;
   }
 
@@ -146,10 +166,12 @@ contract Dyve is IERC721Receiver {
    * @dev the listing was created in the past when list(...) was called. We are operating on that.
    * @param dyveID the internal Dyve ID of the listing.
    */
-  function buyToShort(uint256 dyveID) external payable mustExist(dyveID) mustBeListed(dyveID) {
+  function borrowToShort(uint256 dyveID) external payable mustExist(dyveID) mustBeListed(dyveID) {
+    // @DEV: why storage instead memory?
+    // Understanding now is that if its set to storage, any changes made to this listing will update
+    // the listing in storage directly
     Listing storage listing = listings[dyveID];
 
-    require(listing.status == ListingStatus.LISTED, "this listing needs to be listed!");
     require(listing.collateral + listing.fee <= msg.value, "Insufficient funds!");
 
     listing.status = ListingStatus.SHORTED;
@@ -161,7 +183,7 @@ contract Dyve is IERC721Receiver {
     // transfer the NFT to the borrower
     IERC721(listing.NFTCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.NFTCollectionID);
 
-    emit BuyToShort(msg.sender, listing.lender, dyveID, listing.NFTCollectionID);
+    emit BorrowToShort(msg.sender, listing.lender, dyveID, listing.NFTCollectionID);
     // collateral is stored as ETH in the contract @TODO: Store this in a mapping.
   }
   
@@ -170,9 +192,9 @@ contract Dyve is IERC721Receiver {
    * @param dyveID The Dyve ID of the listing.
    */
   function borrow(uint256 dyveID) external payable mustExist(dyveID) mustBeListed(dyveID) {
+    // @DEV: same as function above
     Listing storage listing = listings[dyveID];
 
-    require(listing.status == ListingStatus.LISTED, "this listing needs to be listed!");
     require(listing.collateral + listing.fee <= msg.value, "Insufficient funds!");
 
     listing.status = ListingStatus.BORROWED;
@@ -217,6 +239,7 @@ contract Dyve is IERC721Receiver {
         require(address(this).balance >= listing.collateral, "insufficient contract funds!");
 
         if (!claimed_collateral[dyveID]) {
+          // @DEV: shouldn't the borrower be getting the collateral back?
           (bool ok, ) = payable(listing.lender).call{value: listing.collateral}("");
           require(ok, "transfer of collateral from Dyve to lender failed!");
 
@@ -247,14 +270,19 @@ contract Dyve is IERC721Receiver {
   }
 
   /**
-   * @notice update a listing with a new fee.
+   * @notice update a listing parameters
    * @param dyveID the Dyve ID/listing to update.
    * @param _fee the new fee for the listing.
+   * @param _collateral the new collateral for the listing.
+   * @param _expiryDateTime the new expiration date for the listing.
    */
-  function update(uint dyveID, uint _fee) external mustExist(dyveID) mustBeListed(dyveID) {
-    listings[dyveID].fee = _fee;
+  function update(uint256 dyveID, uint256 _fee, uint256 _collateral, uint256 _expiryDateTime) external mustExist(dyveID) mustBeListed(dyveID) {
+    Listing storage listing = listings[dyveID];
+    listing.fee = _fee;
+    listing.collateral = _collateral;
+    listing.expiryDateTime = _expiryDateTime;
 
-    emit Update(dyveID, _fee);
+    emit Update(dyveID, _fee, _collateral, _expiryDateTime);
   }
 
   /**
@@ -265,6 +293,7 @@ contract Dyve is IERC721Receiver {
   function claimCollateral(uint dyveID) external payable mustExist(dyveID) {
     Listing memory listing = listings[dyveID];
 
+    // @DEV: why if over require statement?
     if(
       !(listing.status == ListingStatus.LISTED) &&
       !(listing.status == ListingStatus.CLOSED) &&
