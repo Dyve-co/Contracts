@@ -68,7 +68,7 @@ contract Dyve is IERC721Receiver {
   function getAllListings() external view returns (Listing[] memory) {
       Listing[] memory _listings = new Listing[](counter_dyveID);
       for (uint i; i < _listings.length; i++) {
-        _listings[i] = listings[i];
+        _listings[i] = listings[i + 1];
       }
       return _listings;
   }
@@ -217,7 +217,7 @@ contract Dyve is IERC721Receiver {
         require(address(this).balance >= listing.collateral, "insufficient contract funds!");
 
         if (!claimed_collateral[dyveID]) {
-          (bool ok, ) = payable(listing.lender).call{value: listing.collateral}("");
+          (bool ok, ) = payable(listing.borrower).call{value: listing.collateral}("");
           require(ok, "transfer of collateral from Dyve to lender failed!");
 
           claimed_collateral[dyveID] = true;

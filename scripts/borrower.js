@@ -2,14 +2,12 @@ const hre = require("hardhat");
 const { createListing, createBids } = require("./reservoir-sandbox")
 
 const LIST_PRICE = ethers.utils.parseEther('0.01').toString() 
-const BID_PRICE = ethers.utils.parseEther('0.123').toString() 
+const BID_PRICE = ethers.utils.parseEther('0.1').toString() 
 const COLLATERAL = ethers.utils.parseEther('1')
 const FEE = ethers.utils.parseEther('0.01')
 
 async function main() {
   const [listingAccount, bidderAccount] = await hre.ethers.getSigners();
-  // listing account: 0x5bb2610C42280674d6f70682f76311B44D1c07FB
-  // bidder account: 0x43cb58a59319045cA062Ad8F13f8bD593E1B1334
   const Borrower = await hre.ethers.getContractFactory('BorrowerNft');
   const Dyve = await hre.ethers.getContractFactory('Dyve');
 
@@ -19,9 +17,9 @@ async function main() {
   const currentTotalSupply = (await borrower.totalSupply()).toNumber();
   console.log("current total supply", currentTotalSupply);
 
-  const mint_tx = await borrower.connect(listingAccount).batchMint(10);
+  const mint_tx = await borrower.connect(listingAccount).batchMint(2);
   await mint_tx.wait();
-  console.log("10 Borrower NFTs minted")
+  console.log(`10 Borrower NFTs minted by listing account ${listingAccount.address}`);
 
   console.log("borrower address: ", borrower.address)
   await createBids(
@@ -30,7 +28,7 @@ async function main() {
     bidderAccount,
     BID_PRICE
   )
-  console.log("10 bids made on newly minted Borrower NFTs on OpenSea")
+  console.log(`10 bids made on newly minted Borrower NFTs on OpenSea by bidder account ${bidderAccount.address}`);
 
   for (const tokenId of [...Array(5).keys()].map(i => i + currentTotalSupply + 1)) {
     console.log("token Id to be approved: ", tokenId);
@@ -47,7 +45,7 @@ async function main() {
     await list_tx.wait();
     console.log(`token ${tokenId} listed`)
   }
-  console.log("5 Borrower NFTs listed on Dyve")
+  console.log(`First 5 Borrower NFTs listed on Dyve by listing account ${listingAccount.address}`);
 
   await createListing(
     borrower.address,
@@ -55,7 +53,7 @@ async function main() {
     listingAccount, 
     LIST_PRICE,
   )
-  console.log("5 Borrower NFTs listed on OpenSea")
+  console.log(`Last 5 Borrower NFTs listed on OpenSea by listing account ${listingAccount.address}`);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

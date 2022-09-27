@@ -1,8 +1,10 @@
 const hre = require("hardhat");
 
 async function main() {
+  const provider = hre.ethers.provider
+  const bidListAccount = new hre.ethers.Wallet(process.env.PRIVATE_KEY_BID_LIST, provider)
   const Lender = await hre.ethers.getContractFactory("LenderNft");
-  const lender = await Lender.deploy();
+  const lender = await Lender.connect(bidListAccount).deploy();
   await lender.deployed();
   console.log("Lender NFT contract deployed", lender.address);
 }

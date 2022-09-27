@@ -21,14 +21,14 @@ module.exports = {
     },
     rinkeby: {
       url: `https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
-      accounts: process.env.PRIVATE_KEY_1 !== undefined 
-        ? [process.env.PRIVATE_KEY_1, process.env.PRIVATE_KEY_2]
+      accounts: process.env.PRIVATE_KEY_LISTER !== undefined 
+        ? [process.env.PRIVATE_KEY_LISTER, process.env.PRIVATE_KEY_BIDDER] 
         : [],
     },
     goerli: {
       url: `https://eth-goerli.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-      accounts: process.env.PRIVATE_KEY_1 !== undefined 
-        ? [process.env.PRIVATE_KEY_1, process.env.PRIVATE_KEY_2]
+      accounts: process.env.PRIVATE_KEY_LISTER !== undefined 
+        ? [process.env.PRIVATE_KEY_LISTER, process.env.PRIVATE_KEY_BIDDER]
         : [],
     }
   }
