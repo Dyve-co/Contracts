@@ -17,7 +17,7 @@ async function main() {
   const currentTotalSupply = (await borrower.totalSupply()).toNumber();
   console.log("current total supply", currentTotalSupply);
 
-  const mint_tx = await borrower.connect(listingAccount).batchMint(2);
+  const mint_tx = await borrower.connect(listingAccount).batchMint(10);
   await mint_tx.wait();
   console.log(`10 Borrower NFTs minted by listing account ${listingAccount.address}`);
 
