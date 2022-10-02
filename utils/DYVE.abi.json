@@ -58,7 +58,7 @@
         "type": "uint256"
       }
     ],
-    "name": "BuyToShort",
+    "name": "BorrowToShort",
     "type": "event"
   },
   {
@@ -219,7 +219,7 @@
         "type": "uint256"
       }
     ],
-    "name": "buyToShort",
+    "name": "borrowToShort",
     "outputs": [],
     "stateMutability": "payable",
     "type": "function"
@@ -315,12 +315,12 @@
           },
           {
             "internalType": "address",
-            "name": "NFTCollectionAddress",
+            "name": "nftCollectionAddress",
             "type": "address"
           },
           {
             "internalType": "uint256",
-            "name": "NFTCollectionID",
+            "name": "nftId",
             "type": "uint256"
           },
           {
@@ -461,12 +461,12 @@
       },
       {
         "internalType": "address",
-        "name": "NFTCollectionAddress",
+        "name": "nftCollectionAddress",
         "type": "address"
       },
       {
         "internalType": "uint256",
-        "name": "NFTCollectionID",
+        "name": "nftId",
         "type": "uint256"
       },
       {

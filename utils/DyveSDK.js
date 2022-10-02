@@ -11,8 +11,8 @@ class DyveSDK {
     this.dyveAddress = dyveAddress
   }
 
-  async getOwnedNFTs(NFTCollectionAddress) {
-    const nftContract = new ethers.Contract(NFTCollectionAddress, ERC721ABI, this.signer)
+  async getOwnedNFTs(nftCollectionAddress) {
+    const nftContract = new ethers.Contract(nftCollectionAddress, ERC721ABI, this.signer)
 
     const getNfts = new Promise(async (resolve) => {
       let ownedNfts = [];
@@ -40,31 +40,31 @@ class DyveSDK {
     return await dyve.getAllListings()
   }
 
-  async list(NFTCollectionAddress, NFTCollectionID, collateralRequired, fee) {
-    const nftContract = new ethers.Contract(NFTCollectionAddress, ERC721ABI, this.signer)
+  async list(nftCollectionAddress, nftId, collateralRequired, fee) {
+    const nftContract = new ethers.Contract(nftCollectionAddress, ERC721ABI, this.signer)
 
     const dyve = new ethers.Contract(this.dyveAddress, DYVEABI, this.signer)
 
     // approve transaction
-    const approveResult = await nftContract.approve(this.dyveAddress, NFTCollectionID) // approve token 0
+    const approveResult = await nftContract.approve(this.dyveAddress, nftId) // approve token 0
     await approveResult.wait()
 
     // list transaction
-    const result = await dyve.list(NFTCollectionAddress, NFTCollectionID, collateralRequired, fee)
+    const result = await dyve.list(nftCollectionAddress, nftId, collateralRequired, fee)
     await result.wait()
 
-    return await dyve.listings(NFTCollectionID)
+    return await dyve.listings(nftId)
   }
 
-  async getCollectionName(NFTCollectionAddress) {
-    const nftContract = new ethers.Contract(NFTCollectionAddress, ERC721ABI, this.signer)
+  async getCollectionName(nftCollectionAddress) {
+    const nftContract = new ethers.Contract(nftCollectionAddress, ERC721ABI, this.signer)
     const collectionName = await nftContract.name()
     return collectionName
   }
 
-  async buyToShort(dyveId, collateral) {
+  async borrowToShort(dyveId, collateral) {
     const dyve = new ethers.Contract(this.dyveAddress, DYVEABI, this.signer)
-    const result = await dyve.buyToShort(dyveId, { value: collateral })
+    const result = await dyve.borrowToShort(dyveId, { value: collateral })
     return await result.wait()
   }
 
@@ -77,15 +77,15 @@ class DyveSDK {
     const dyve = new ethers.Contract(this.dyveAddress, DYVEABI, this.signer)
     const listings = await dyve.getAllListings()
     const listingItem = listings.filter(item => {
-      return item.NFTCollectionID.toNumber() == nftid
+      return item.nftId.toNumber() == nftid
     })[0]
 
     await this.borrow(listingItem)
   }
 
-  async closePosition(NFTCollectionAddress, position, replacementNFT) {
+  async closePosition(nftCollectionAddress, position, replacementNFT) {
     const dyve = new ethers.Contract(this.dyveAddress, DYVEABI, this.signer)
-    const nftContract = new ethers.Contract(NFTCollectionAddress, ERC721ABI, this.signer)
+    const nftContract = new ethers.Contract(nftCollectionAddress, ERC721ABI, this.signer)
 
     const approveResult = await nftContract.approve(dyve.address, replacementNFT) // approve token 0
     await approveResult.wait()

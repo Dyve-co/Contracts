@@ -51,8 +51,8 @@ contract DyveAlpha is IERC721Receiver {
     address payable lender;
     address payable borrower;
     uint256 expiryDateTime;
-    address NFTCollectionAddress;
-    uint256 NFTCollectionID;
+    address nftCollectionAddress;
+    uint256 nftId;
     uint256 collateral;
     uint256 fee;
     ListingStatus status;
@@ -109,8 +109,8 @@ contract DyveAlpha is IERC721Receiver {
             lender: payable(msg.sender),
             borrower: payable(0),
             expiryDateTime: block.timestamp + 14 days,
-            NFTCollectionAddress: _NFTCollectionAddress,
-            NFTCollectionID: _NFTCollectionID,
+            nftCollectionAddress: _NFTCollectionAddress,
+            nftId: _NFTCollectionID,
             collateral: _collateral,
             fee: _fee,
             status: ListingStatus.LISTED
@@ -188,9 +188,9 @@ contract DyveAlpha is IERC721Receiver {
     require(ok, "transfer of fee to seller failed!");
 
     // transfer the NFT to the borrower
-    IERC721(listing.NFTCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.NFTCollectionID);
+    IERC721(listing.nftCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.nftId);
 
-    emit BorrowToShort(msg.sender, listing.lender, dyveID, listing.NFTCollectionID);
+    emit BorrowToShort(msg.sender, listing.lender, dyveID, listing.nftId);
     // collateral is stored as ETH in the contract @TODO: Store this in a mapping.
   }
   
@@ -214,9 +214,9 @@ contract DyveAlpha is IERC721Receiver {
     require(ok, "transfer of fee to seller failed!");
 
     // transfer the NFT to the borrower
-    IERC721(listing.NFTCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.NFTCollectionID);
+    IERC721(listing.nftCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.nftId);
 
-    emit Borrow(msg.sender, listing.lender, dyveID, listing.NFTCollectionID);
+    emit Borrow(msg.sender, listing.lender, dyveID, listing.nftId);
     // collateral is stored as ETH in the contract @TODO: Store this in a mapping.
   }
   
@@ -233,11 +233,11 @@ contract DyveAlpha is IERC721Receiver {
 				Listing storage userListing = userListings[listing.lender][listing.userListingId];
 
         // Require that the borrower owns it from the collection:
-        require(keccak256(abi.encodePacked(IERC721(listing.NFTCollectionAddress).ownerOf(_replacementNFTID))) == keccak256(abi.encodePacked(listing.borrower)), "the borrower does not own the incoming NFT");
+        require(keccak256(abi.encodePacked(IERC721(listing.nftCollectionAddress).ownerOf(_replacementNFTID))) == keccak256(abi.encodePacked(listing.borrower)), "the borrower does not own the incoming NFT");
 
         if (listing.status == ListingStatus.BORROWED) {
           // the ID needs to match in case of a pure borrow
-          require(listing.NFTCollectionID == _replacementNFTID, "The item returned is not the same!");
+          require(listing.nftId == _replacementNFTID, "The item returned is not the same!");
         }
 
         // make listing changes
@@ -245,7 +245,7 @@ contract DyveAlpha is IERC721Receiver {
         userListing.status = ListingStatus.CLOSED;
 
         // move the incoming NFT from borrower to lender -- the lender is made whole
-        IERC721(listing.NFTCollectionAddress).safeTransferFrom(listing.borrower, listing.lender, _replacementNFTID);
+        IERC721(listing.nftCollectionAddress).safeTransferFrom(listing.borrower, listing.lender, _replacementNFTID);
 
         // unlock and transfer collateral from dyve to lender
         require(address(this).balance >= listing.collateral, "insufficient contract funds!");
@@ -258,9 +258,9 @@ contract DyveAlpha is IERC721Receiver {
           claimed_collateral[dyveID] = true;
         }
 
-        emit Close(listing.borrower, listing.lender, listing.dyveId, listing.NFTCollectionID, _replacementNFTID);
+        emit Close(listing.borrower, listing.lender, listing.dyveId, listing.nftId, _replacementNFTID);
 
-        nft_has_open_listing[_hashNFT(listing.NFTCollectionAddress, listing.NFTCollectionID)] = false;
+        nft_has_open_listing[_hashNFT(listing.nftCollectionAddress, listing.nftId)] = false;
   }
 
   /**
@@ -276,11 +276,11 @@ contract DyveAlpha is IERC721Receiver {
 		userListing.status = ListingStatus.CLOSED;
 
     // transfer the NFT back to the lender (will require approval)
-    IERC721(listing.NFTCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.NFTCollectionID);
+    IERC721(listing.nftCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.nftId);
 
-    emit Cancel(listing.borrower, listing.lender, listing.dyveId, listing.NFTCollectionID);
+    emit Cancel(listing.borrower, listing.lender, listing.dyveId, listing.nftId);
 
-    nft_has_open_listing[_hashNFT(listing.NFTCollectionAddress, listing.NFTCollectionID)] = false;
+    nft_has_open_listing[_hashNFT(listing.nftCollectionAddress, listing.nftId)] = false;
   }
 
   /**
@@ -336,7 +336,7 @@ contract DyveAlpha is IERC721Receiver {
 
       emit Expired(listing.borrower, listing.lender, listing.dyveId);
 
-      nft_has_open_listing[_hashNFT(listing.NFTCollectionAddress, listing.NFTCollectionID)] = false;
+      nft_has_open_listing[_hashNFT(listing.nftCollectionAddress, listing.nftId)] = false;
     }
   }
 

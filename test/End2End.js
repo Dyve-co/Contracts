@@ -120,7 +120,7 @@ describe('CoolCats Tests', async function () {
       const dyveSDK = new DyveSDK(provider, borrowerSigner, dyve.address)
 
       const collateral = await ethers.utils.parseUnits('1.12', 18)
-      await dyveSDK.buyToShort(0, collateral)
+      await dyveSDK.borrowToShort(0, collateral)
       const listings = await dyveSDK.getAllListings()
 
       expect(listings.length === 1).true

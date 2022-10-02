@@ -21,7 +21,7 @@ contract Dyve is IERC721Receiver {
   event ListingEvent(address indexed lender, uint256 dyveId, uint256 nftId);
   event Borrow(address indexed borrower, address indexed lender, uint256 dyveId, uint256 nftId);
   event BorrowToShort(address indexed borrower, address indexed lender, uint256 dyveId, uint256 nftId);
-  event Close(address indexed borrower, address indexed lender, uint256 dyveId, uint256 originalNFTcollectionID, uint256 returnedNFTCollectionID);
+  event Close(address indexed borrower, address indexed lender, uint256 dyveId, uint256 originalNftId, uint256 returnedNftId);
   event Expired(address indexed borrower, address indexed lender, uint256 dyveId);
   event Cancel(address indexed borrower, address indexed lender, uint256 dyveId, uint256 nftId);
   event Update(uint256 dyveId, uint256 newFee, uint256 newCollateral, uint256 newDuration);

@@ -12,8 +12,8 @@ async function main() {
   //   console.log("dyve ID: ", dyveId.toNumber())
   //   console.log("nft collection: ", nftCollectionId.toNumber())
 
-  //   const buyToShortTx = await dyve.buyToshort(dyveId)
-  //   await buyToShortTx.wait()
+  //   const borrowToShortTx = await dyve.buyToshort(dyveId)
+  //   await borrowToShortTx.wait()
   //   console.log(`NFT ${nftCollectionId} bought to short`)
 
   // })
