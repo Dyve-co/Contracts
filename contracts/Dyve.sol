@@ -148,31 +148,6 @@ contract Dyve is IERC721Receiver {
   }
 
   /**
-   * @notice Borrow a listing that a lender previously provided.
-   * @dev the listing was created in the past when list(...) was called. We are operating on that.
-   * @param dyveID the internal Dyve ID of the listing.
-   */
-  function borrowToShort(uint256 dyveID) external payable mustExist(dyveID) mustBeListed(dyveID) {
-    Listing storage listing = listings[dyveID];
-
-    require(listing.status == ListingStatus.LISTED, "this listing needs to be listed!");
-    require(listing.collateral + listing.fee <= msg.value, "Insufficient funds!");
-
-    listing.status = ListingStatus.SHORTED;
-    listing.borrower = payable(msg.sender);
-    listing.expiryDateTime = block.timestamp + listing.duration;
-
-    (bool ok,) = payable(listing.lender).call{value: listing.fee}("");
-    require(ok, "transfer of fee to seller failed!");
-
-    // transfer the NFT to the borrower
-    IERC721(listing.nftCollectionAddress).safeTransferFrom(address(this), msg.sender, listing.nftId);
-
-    emit BorrowToShort(msg.sender, listing.lender, dyveID, listing.nftId);
-    // collateral is stored as ETH in the contract @TODO: Store this in a mapping.
-  }
-  
-  /**
    * @notice Gives the borrower the ability to borrow from the lender. Need to return the same ID later.
    * @param dyveID The Dyve ID of the listing.
    */
