@@ -14,10 +14,10 @@ async function main() {
   await tx.wait()
   console.log(`100 Lender NFTs minted by bid list account ${bidListAccount.address}`)
 
-  const nftIds = [...Array(totalSupplyPrev).keys()].map((i) => i + totalSupply + 1)
+  const tokenIds = [...Array(totalSupplyPrev).keys()].map((i) => i + totalSupply + 1)
   await createListing(
     lender.address,
-    nftIds,
+    tokenIds,
     bidListAccount,
     LIST_PRICE,
   )
