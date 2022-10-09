@@ -234,10 +234,10 @@ contract Dyve is IERC721Receiver {
         // Require that the borrower owns it from the collection:
         require(keccak256(abi.encodePacked(IERC721(listing.collection).ownerOf(_returnTokenId))) == keccak256(abi.encodePacked(listing.borrower)), "the borrower does not own the incoming NFT");
 
-        if (listing.status == ListingStatus.BORROWED) {
-          // the ID needs to match in case of a pure borrow
-          require(listing.tokenId == _returnTokenId, "The item returned is not the same!");
-        }
+        // if (listing.status == ListingStatus.BORROWED) {
+        //   // the ID needs to match in case of a pure borrow
+        //   require(listing.tokenId == _returnTokenId, "The item returned is not the same!");
+        // }
 
         // make listing changes
         listing.status = ListingStatus.CLOSED;
