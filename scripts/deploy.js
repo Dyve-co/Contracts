@@ -3,7 +3,9 @@ const hre = require("hardhat");
 async function main() {
   const Dyve = await hre.ethers.getContractFactory("Dyve");
   const dyve = await Dyve.deploy();
-  await dyve.deployed();
+  const tx = await dyve.deployTransaction.wait();
+
+  console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);
 }
 

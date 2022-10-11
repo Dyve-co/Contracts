@@ -40,20 +40,20 @@ class DyveSDK {
     return await dyve.getAllListings()
   }
 
-  async list(nftCollectionAddress, nftId, collateralRequired, fee) {
+  async list(nftCollectionAddress, tokenId, collateralRequired, fee) {
     const nftContract = new ethers.Contract(nftCollectionAddress, ERC721ABI, this.signer)
 
     const dyve = new ethers.Contract(this.dyveAddress, DYVEABI, this.signer)
 
     // approve transaction
-    const approveResult = await nftContract.approve(this.dyveAddress, nftId) // approve token 0
+    const approveResult = await nftContract.approve(this.dyveAddress, tokenId) // approve token 0
     await approveResult.wait()
 
     // list transaction
-    const result = await dyve.list(nftCollectionAddress, nftId, collateralRequired, fee)
+    const result = await dyve.list(nftCollectionAddress, tokenId, collateralRequired, fee)
     await result.wait()
 
-    return await dyve.listings(nftId)
+    return await dyve.listings(tokenId)
   }
 
   async getCollectionName(nftCollectionAddress) {
@@ -77,7 +77,7 @@ class DyveSDK {
     const dyve = new ethers.Contract(this.dyveAddress, DYVEABI, this.signer)
     const listings = await dyve.getAllListings()
     const listingItem = listings.filter(item => {
-      return item.nftId.toNumber() == nftid
+      return item.tokenId.toNumber() == nftid
     })[0]
 
     await this.borrow(listingItem)

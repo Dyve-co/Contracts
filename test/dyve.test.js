@@ -48,7 +48,7 @@ describe("Dyve", function () {
     expect(listing.collateral).to.equal(ethers.utils.parseEther("1"));
     expect(listing.fee).to.equal(ethers.utils.parseEther("0.1"));
     expect(listing.nftCollectionAddress).to.equal(lender.address);
-    expect(listing.nftId).to.equal(1);
+    expect(listing.tokenId).to.equal(1);
     expect(listing.duration).to.equal(100);
     expect(listing.lender).to.equal(owner.address);
     expect(listing.status).to.equal(LISTED)

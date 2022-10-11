@@ -19,14 +19,14 @@ async function main() {
     }, Promise.resolve({ listings: [], continuationToken: null }))
   console.log("Dyve and OpenSea listings fetched")
   
-  const { dyveListings: closingNfts, totalPrice } = dyveListings.reduce((currentListings, { nftId }) => {
+  const { dyveListings: closingNfts, totalPrice } = dyveListings.reduce((currentListings, { tokenId }) => {
     const { openSeaListings, dyveListings, totalPrice } = currentListings
-    const replacementNft = openSeaListings.find(({ tokenSetId }) => tokenSetId.split(':')[2] !== nftId.toString())
+    const replacementNft = openSeaListings.find(({ tokenSetId }) => tokenSetId.split(':')[2] !== tokenId.toString())
 
     const _openSeaListings = openSeaListings.filter(({ id }) => id !== replacementNft.id) 
     const _dyveListings = dyveListings.map(dyveListing => ({
-      ...(dyveListing.nftId === nftId 
-          ? { replacementNftId: replacementNft.tokenSetId.split(':')[2] } 
+      ...(dyveListing.tokenId === tokenId 
+          ? { replacementTokenId: replacementNft.tokenSetId.split(':')[2] } 
           : {}
         ),
       ...dyveListing,
@@ -41,17 +41,17 @@ async function main() {
   }, { openSeaListings, dyveListings, totalPrice: 0 })
   console.log("OpenSea NFTs to purchase and total price configured")
 
-  const nftIdsToPurchase = closingNfts.map(({ replacementNftId }) => replacementNftId)
+  const tokenIdsToPurchase = closingNfts.map(({ replacementTokenId }) => replacementTokenId)
   await buyTokens(
     process.env.LENDER_ADDRESS,
-    nftIdsToPurchase,
+    tokenIdsToPurchase,
     totalPrice,
     shortingAccount,
   )
   console.log("replacement tokens bought")
 
-  for (const { dyveId, replacementNftId } of closingNfts) {
-    const closeTx = await dyve.closePosition(dyveId, replacementNftId)
+  for (const { dyveId, replacementTokenId } of closingNfts) {
+    const closeTx = await dyve.closePosition(dyveId, replacementTokenId)
     await closeTx.wait()
     console.log(`NFT short position ${dyveId} closed`)
   }

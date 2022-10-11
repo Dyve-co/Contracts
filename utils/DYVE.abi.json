@@ -320,7 +320,7 @@
           },
           {
             "internalType": "uint256",
-            "name": "nftId",
+            "name": "tokenId",
             "type": "uint256"
           },
           {
@@ -466,7 +466,7 @@
       },
       {
         "internalType": "uint256",
-        "name": "nftId",
+        "name": "tokenId",
         "type": "uint256"
       },
       {
