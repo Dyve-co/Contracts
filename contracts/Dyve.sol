@@ -40,21 +40,23 @@ contract Dyve is IERC721Receiver {
     uint256 duration; 
     address collection;
     uint256 tokenId;
-    uint256 collateral;
+    uint256 baseCollateral;
+    uint256 collateralMultiplier;
     uint256 fee;
     ListingStatus status;
   }
 
   // OFF-CHAIN
   event Cancel(address indexed borrower, address indexed lender, uint256 dyveId, uint256 tokenId);
-  event Update(uint256 dyveId, uint256 newFee, uint256 newCollateral, uint256 newDuration);
+  event Update(uint256 dyveId, uint256 newFee, uint256 newBaseCollateral, uint256 newCollateralMultiplier, uint256 newDuration);
   event List(
     address indexed lender, 
     uint256 dyveId, 
     uint256 tokenId,
     address collection,
     uint256 duration,
-    uint256 collateral,
+    uint256 baseCollateral,
+    uint256 collateralMultiplier,
     uint256 fee,
     ListingStatus status
   );
@@ -66,7 +68,8 @@ contract Dyve is IERC721Receiver {
     uint256 tokenId,
     address collection,
     uint256 duration,
-    uint256 collateral,
+    uint256 baseCollateral,
+    uint256 collateralMultiplier,
     uint256 fee,
     uint256 expiryDateTime,
     ListingStatus status
@@ -77,7 +80,8 @@ contract Dyve is IERC721Receiver {
     uint256 dyveId, 
     uint256 tokenId, 
     address collection,
-    uint256 collateral,
+    uint256 baseCollateral,
+    uint256 collateralMultiplier,
     uint256 returnedTokenId,
     ListingStatus status
   );
@@ -87,7 +91,8 @@ contract Dyve is IERC721Receiver {
     uint256 dyveId,
     uint256 tokenId,
     address collection,
-    uint256 collateral,
+    uint256 baseCollateral,
+    uint256 collateralMultiplier,
     ListingStatus status
   );
 
@@ -114,13 +119,15 @@ contract Dyve is IERC721Receiver {
    * @notice List the NFT on Dyve as lender for someone to borrow and short sell.
    * @param _collection The NFT Collection address.
    * @param _tokenId The NFT Collection identifier from the _collection.
-   * @param _collateral the Collateral required from a borrower (later on when calling borrow) to borrow this item.
+   * @param _baseCollateral the Base Collateral required for the listing (later on when calling borrow) to borrow this item.
+   * @param _collateralMultiplier the Collateral Multiplier (in factor of 100) required for the listing (later on when calling borrow) to borrow this item.
    * @param _fee the Fee taken by the lender.
    * @param _duration the Duration of the listing in seconds.
    */
-  function list(address _collection, uint256 _tokenId, uint256 _collateral, uint256 _fee, uint256 _duration) external {
+  function list(address _collection, uint256 _tokenId, uint256 _baseCollateral, uint256 _collateralMultiplier, uint256 _fee, uint256 _duration) external {
       require(!nft_has_open_listing[_hashNFT(_collection, _tokenId)], "Already listed!");
-      require(_collateral > 0, "Collateral must be greater than 0");
+      require(_baseCollateral > 0, "Collateral must be greater than 0");
+      require(_collateralMultiplier > 0, "Collateral Multiplier must be greater than 0");
       require(_fee > 0, "Fee must be greater than 0");
       require(_duration > 0, "Duration must be greater than 0");
 
@@ -135,7 +142,8 @@ contract Dyve is IERC721Receiver {
             duration: _duration,
             collection: _collection,
             tokenId: _tokenId,
-            collateral: _collateral,
+            baseCollateral: _baseCollateral,
+            collateralMultiplier: _collateralMultiplier,
             fee: _fee,
             status: ListingStatus.LISTED
       });
@@ -144,7 +152,7 @@ contract Dyve is IERC721Receiver {
       // @dev THIS REQUIRES THAT WE HAVE CALLED THE NFT CONTRACT TO APPROVE US ON BEHALF OF THE USER!
       IERC721(_collection).safeTransferFrom(msg.sender, address(this), _tokenId);
 
-      emit List(msg.sender, counter_dyveId, _tokenId, _collection, _duration, _collateral, _fee, ListingStatus.LISTED);
+      emit List(msg.sender, counter_dyveId, _tokenId, _collection, _duration, _baseCollateral, _collateralMultiplier, _fee, ListingStatus.LISTED);
   }
 
   /**
@@ -291,19 +299,22 @@ contract Dyve is IERC721Receiver {
    * @notice update a listing with a new fee.
    * @param dyveId the Dyve ID/listing to update.
    * @param _fee the new fee for the listing.
-   * @param _collateral the new collateral for the listing.
+   * @param _baseCollateral the new base collateral for the listing.
+   * @param _collateralMultiplier the new collateral multiplier for the listing.
    * @param _duration the new duration for the listing.
    */
-  function update(uint256 dyveId, uint256 _fee, uint256 _collateral, uint256 _duration) external mustExist(dyveId) mustBeListed(dyveId) {
+  function update(uint256 dyveId, uint256 _fee, uint256 _baseCollateral, uint256 _collateralMultiplier, uint256 _duration) external mustExist(dyveId) mustBeListed(dyveId) {
     require(_fee > 0, "fee must be greater than 0");
-    require(_collateral > 0, "collateral must be greater than 0");
+    require(_baseCollateral > 0, "base collateral must be greater than 0");
+    require(_collateralMultiplier > 0, "collateral multiplier must be greater than 0");
     require(_duration > 0, "duration must be greater than 0");
 
     listings[dyveId].fee = _fee;
-    listings[dyveId].collateral = _collateral;
+    listings[dyveId].baseCollateral = _baseCollateral;
+    listings[dyveId].collateralMultiplier = _collateralMultiplier;
     listings[dyveId].duration = _duration;
 
-    emit Update(dyveId, _fee, _collateral, _duration);
+    emit Update(dyveId, _fee, _baseCollateral, _collateralMultiplier, _duration);
   }
 
   /**
