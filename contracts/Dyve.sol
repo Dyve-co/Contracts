@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
+// OZ libraries
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
-// The interface to call NFT functionality from Dyve:
-interface IERC721 {
-    function safeTransferFrom(address from, address to, uint256 tokenId) external;
-    function approve(address to, uint256 tokenId) external;
-    function ownerOf(uint256 tokenID) external view returns (address);
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-}
+// Dyve Interfaces
+import "./interfaces/IERC721.sol";
+import "./interfaces/IEscrow.sol";
 
 /**
  * @notice The Dyve Contract to handle short Selling of NFTs.
  * @dev implements the IERC721Receiver so we can use the safeTransferFrom mechanism.
  */
-contract Dyve is IERC721Receiver {
+contract Dyve is Ownable, IERC721Receiver  { 
+  // The Escrow contract that holds the NFTs and collateral
+  IEscrow public escrow;
+
   uint256 counter_dyveId;  // store new listings uniquely @TODO: Should we represent this ID as a hash of the listing?
+
   // All listed NFTs up for lending
   mapping(uint256 => Listing) public listings;
   mapping(uint256 => bool) public claimed_collateral; // track which Dyve listing has claimed collateral
@@ -90,6 +91,10 @@ contract Dyve is IERC721Receiver {
     uint256 collateral,
     ListingStatus status
   );
+
+  constructor(address _escrow) {
+    escrow = IEscrow(_escrow);
+  }
 
   /**
    * @notice Get listing details.
@@ -199,8 +204,11 @@ contract Dyve is IERC721Receiver {
     listing.borrower = payable(msg.sender);
     listing.expiryDateTime = block.timestamp + listing.duration;
 
-    (bool ok,) = payable(listing.lender).call{value: listing.fee}("");
-    require(ok, "transfer of fee to seller failed!");
+    (bool collateralOk, ) = payable(address(escrow)).call{value: listing.collateral}("");
+    require(collateralOk, "Dyve: Failed to send collateral to Escrow");
+
+    (bool feeOk,) = payable(listing.lender).call{value: listing.fee}("");
+    require(feeOk, "Dyve: Transfer of fee to seller failed!");
 
     // transfer the NFT to the borrower
     IERC721(listing.collection).safeTransferFrom(address(this), msg.sender, listing.tokenId);
@@ -246,11 +254,11 @@ contract Dyve is IERC721Receiver {
         IERC721(listing.collection).safeTransferFrom(listing.borrower, listing.lender, _returnTokenId);
 
         // unlock and transfer collateral from dyve to lender
-        require(address(this).balance >= listing.collateral, "insufficient contract funds!");
+        require(address(escrow).balance >= listing.collateral, "insufficient contract funds!");
 
         if (!claimed_collateral[dyveId]) {
-          (bool ok, ) = payable(listing.borrower).call{value: listing.collateral}("");
-          require(ok, "transfer of collateral from Dyve to lender failed!");
+          bool ok = escrow.releaseCollateral(listing.borrower, listing.collateral);
+          require(ok, "Dyve: transfer of collateral from Dyve to lender failed!");
 
           claimed_collateral[dyveId] = true;
         }
@@ -323,10 +331,10 @@ contract Dyve is IERC721Receiver {
       // transfer the collateral from Dyve to the lender because the listing expired!
       listings[dyveId].status = ListingStatus.EXPIRED;
 
-      require(address(this).balance >= listing.collateral, "Insufficient funds to transfer");
+      require(address(escrow).balance >= listing.collateral, "Insufficient funds to transfer");
 
       if (!claimed_collateral[dyveId]) {
-        (bool ok, ) = payable(listing.lender).call{value: listing.collateral}("");
+        bool ok = escrow.releaseCollateral(listing.lender, listing.collateral);
         require(ok, "Transfer failed!");
 
         claimed_collateral[dyveId] = true;
@@ -346,10 +354,16 @@ contract Dyve is IERC721Receiver {
     }
   }
 
+  function updateEscrow(address _escrow) external onlyOwner {
+    require(_escrow != address(0), "Owner: Cannot be null address");
+    escrow = IEscrow(_escrow);
+ 
+  }
+
   /**
    * @notice Implemented to support the Safe Transfer mechanism.
    */
   function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
-        return IERC721Receiver.onERC721Received.selector;
+    return IERC721Receiver.onERC721Received.selector;
   }
 }
