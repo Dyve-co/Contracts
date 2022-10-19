@@ -5,6 +5,9 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
+// Oracle
+import {ReservoirOracle} from "./ReservoirOracle.sol";
+
 // Dyve Interfaces
 import "./interfaces/IERC721.sol";
 import "./interfaces/IEscrow.sol";
@@ -13,7 +16,7 @@ import "./interfaces/IEscrow.sol";
  * @notice The Dyve Contract to handle short Selling of NFTs.
  * @dev implements the IERC721Receiver so we can use the safeTransferFrom mechanism.
  */
-contract Dyve is Ownable, IERC721Receiver  { 
+contract Dyve is Ownable, IERC721Receiver, ReservoirOracle { 
   // The Escrow contract that holds the NFTs and collateral
   IEscrow public escrow;
 
@@ -97,7 +100,7 @@ contract Dyve is Ownable, IERC721Receiver  {
     ListingStatus status
   );
 
-  constructor(address _escrow) {
+  constructor(address _escrow, address reservoir) ReservoirOracle(0x32dA57E736E05f75aa4FaE2E9Be60FD904492726) {
     escrow = IEscrow(_escrow);
   }
 
@@ -202,8 +205,16 @@ contract Dyve is Ownable, IERC721Receiver  {
    * @notice Gives the borrower the ability to borrow from the lender. Need to return the same ID later.
    * @param dyveId The Dyve ID of the listing.
    */
-  function borrow(uint256 dyveId) external payable mustExist(dyveId) mustBeListed(dyveId) {
+  function borrow(uint256 dyveId, Message calldata message) external payable mustExist(dyveId) mustBeListed(dyveId) {
     Listing storage listing = listings[dyveId];
+
+    // Validate the message
+    uint256 maxMessageAge = 5 minutes;
+    if (!_verifyMessage(message.id, maxMessageAge, message)) {
+        revert InvalidMessage();
+    }
+
+    (address messageCurrency, uint256 messagePrice) = abi.decode(message.payload, (address, uint256)); 
 
     require(listing.status == ListingStatus.LISTED, "this listing needs to be listed!");
     require(listing.collateral + listing.fee <= msg.value, "Insufficient funds!");
