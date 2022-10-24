@@ -13,6 +13,9 @@ module.exports = {
   paths: {
     artifacts: './artifacts'
   },
+  mocha: {
+    timeout: 1000000000000000000000000
+  },
   networks: {
     rinkeby: {
       url: `https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,

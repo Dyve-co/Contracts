@@ -5,10 +5,8 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
-// Oracle
-import {ReservoirOracle} from "./ReservoirOracle.sol";
-
 // Dyve Interfaces
+import {ReservoirOracle} from "./ReservoirOracle.sol";
 import "./interfaces/IERC721.sol";
 import "./interfaces/IEscrow.sol";
 
@@ -41,9 +39,10 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
     address payable lender;
     address payable borrower;
     uint256 expiryDateTime;
-    uint256 duration; 
+    uint256 duration;
     address collection;
     uint256 tokenId;
+    uint256 collateral;
     uint256 baseCollateral;
     uint256 collateralMultiplier;
     uint256 fee;
@@ -72,8 +71,9 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
     uint256 tokenId,
     address collection,
     uint256 duration,
+    uint256 collateral,
     uint256 baseCollateral,
-    uint256 collateralMultiplier,
+    uint256 collateralMultiplier, // set in 100 (ie: 1% === 1)
     uint256 fee,
     uint256 expiryDateTime,
     ListingStatus status
@@ -84,6 +84,7 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
     uint256 dyveId, 
     uint256 tokenId, 
     address collection,
+    uint256 collateral,
     uint256 baseCollateral,
     uint256 collateralMultiplier,
     uint256 returnedTokenId,
@@ -95,12 +96,13 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
     uint256 dyveId,
     uint256 tokenId,
     address collection,
+    uint256 collateral,
     uint256 baseCollateral,
     uint256 collateralMultiplier,
     ListingStatus status
   );
 
-  constructor(address _escrow, address reservoir) ReservoirOracle(0x32dA57E736E05f75aa4FaE2E9Be60FD904492726) {
+  constructor(address _escrow) ReservoirOracle(0x32dA57E736E05f75aa4FaE2E9Be60FD904492726) {
     escrow = IEscrow(_escrow);
   }
 
@@ -150,6 +152,7 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
             duration: _duration,
             collection: _collection,
             tokenId: _tokenId,
+            collateral: 0,
             baseCollateral: _baseCollateral,
             collateralMultiplier: _collateralMultiplier,
             fee: _fee,
@@ -201,6 +204,20 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
     _;
   }
 
+  function getOraclePrice(Message calldata message) internal returns (uint256) {
+    uint256 maxMessageAge = 5 minutes;
+    if (!_verifyMessage(message.id, maxMessageAge, message)) {
+        revert InvalidMessage();
+    }
+
+    (
+      address messageCurrency, 
+      uint256 messagePrice
+    ) = abi.decode(message.payload, (address, uint256));
+
+    return messagePrice;
+  }
+
   /**
    * @notice Gives the borrower the ability to borrow from the lender. Need to return the same ID later.
    * @param dyveId The Dyve ID of the listing.
@@ -208,26 +225,42 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
   function borrow(uint256 dyveId, Message calldata message) external payable mustExist(dyveId) mustBeListed(dyveId) {
     Listing storage listing = listings[dyveId];
 
-    // Validate the message
-    uint256 maxMessageAge = 5 minutes;
-    if (!_verifyMessage(message.id, maxMessageAge, message)) {
-        revert InvalidMessage();
+    // uint256 floorPrice = getOraclePrice(message);
+    uint256 floorPrice;
+    {
+      uint256 maxMessageAge = 5 minutes;
+      if (!_verifyMessage(message.id, maxMessageAge, message)) {
+          revert InvalidMessage();
+      }
+
+      (
+        address messageCurrency, 
+        uint256 messagePrice
+      ) = abi.decode(message.payload, (address, uint256));
+
+      floorPrice = messagePrice;
     }
+    uint256 collateral = floorPrice * listing.collateralMultiplier / 100;
 
-    (address messageCurrency, uint256 messagePrice) = abi.decode(message.payload, (address, uint256)); 
-
-    require(listing.status == ListingStatus.LISTED, "this listing needs to be listed!");
-    require(listing.collateral + listing.fee <= msg.value, "Insufficient funds!");
+    require(listing.status == ListingStatus.LISTED, "Dyve: This listing needs to be listed!");
+    require(listing.baseCollateral + listing.fee <= msg.value, "Dyve:  collateral sent is less than base collateral!");
+    require(collateral + listing.fee <= msg.value, "Dyve: Insufficient funds!");
 
     listing.status = ListingStatus.BORROWED;
     listing.borrower = payable(msg.sender);
     listing.expiryDateTime = block.timestamp + listing.duration;
+    listing.collateral = collateral;
 
-    (bool collateralOk, ) = payable(address(escrow)).call{value: listing.collateral}("");
-    require(collateralOk, "Dyve: Failed to send collateral to Escrow");
+    bool ok;
+    {
+      (ok,) = payable(address(escrow)).call{value: collateral}("");
+      require(ok, "Dyve: Failed to send collateral to Escrow");
+    }
 
-    (bool feeOk,) = payable(listing.lender).call{value: listing.fee}("");
-    require(feeOk, "Dyve: Transfer of fee to seller failed!");
+    {
+      (ok,) = payable(listing.lender).call{value: listing.fee}("");
+      require(ok, "Dyve: Transfer of fee to seller failed!");
+    }
 
     // transfer the NFT to the borrower
     IERC721(listing.collection).safeTransferFrom(address(this), msg.sender, listing.tokenId);
@@ -239,7 +272,9 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
       listing.tokenId,
       listing.collection,
       listing.duration,
-      listing.collateral,
+      collateral,
+      listing.baseCollateral,
+      listing.collateralMultiplier,
       listing.fee,
       listing.expiryDateTime,
       listing.status
@@ -259,7 +294,7 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
         Listing storage listing = listings[dyveId];
 
         // Require that the borrower owns it from the collection:
-        require(keccak256(abi.encodePacked(IERC721(listing.collection).ownerOf(_returnTokenId))) == keccak256(abi.encodePacked(listing.borrower)), "the borrower does not own the incoming NFT");
+        require(IERC721(listing.collection).ownerOf(_returnTokenId) == listing.borrower, "the borrower does not own the incoming NFT");
 
         // if (listing.status == ListingStatus.BORROWED) {
         //   // the ID needs to match in case of a pure borrow
@@ -289,6 +324,8 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
           listing.tokenId,
           listing.collection,
           listing.collateral,
+          listing.baseCollateral,
+          listing.collateralMultiplier,
           _returnTokenId,
           listing.status
         );
@@ -369,6 +406,8 @@ contract Dyve is Ownable, IERC721Receiver, ReservoirOracle {
         listing.tokenId,
         listing.collection,
         listing.collateral,
+        listing.baseCollateral,
+        listing.collateralMultiplier,
         listing.status
       );
 
