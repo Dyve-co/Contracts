@@ -2,368 +2,284 @@
 pragma solidity ^0.8.9;
 
 // OZ libraries
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 // Dyve Interfaces
-import "./interfaces/IERC721.sol";
-import "./interfaces/IEscrow.sol";
+import {IEscrow} from "./interfaces/IEscrow.sol";
+import {OrderTypes} from "./libraries/OrderTypes.sol";
+import {SignatureChecker} from "./libraries/SignatureChecker.sol";
 
 /**
  * @notice The Dyve Contract to handle short Selling of NFTs.
  * @dev implements the IERC721Receiver so we can use the safeTransferFrom mechanism.
  */
-contract Dyve is Ownable, IERC721Receiver  { 
-  // The Escrow contract that holds the NFTs and collateral
+contract Dyve is ReentrancyGuard, Ownable {
+  using OrderTypes for OrderTypes.MakerOrder;
+  using OrderTypes for OrderTypes.TakerOrder;
+
   IEscrow public escrow;
+  
+  bytes32 public immutable DOMAIN_SEPARATOR;
+  address public protocolFeeRecipient;
 
-  uint256 counter_dyveId;  // store new listings uniquely @TODO: Should we represent this ID as a hash of the listing?
-
-  // All listed NFTs up for lending
-  mapping(uint256 => Listing) public listings;
-  mapping(uint256 => bool) public claimed_collateral; // track which Dyve listing has claimed collateral
-  mapping(bytes32 => bool) public nft_has_open_listing;  // track an open listing against indivual NFTs, (individual NFT) => (dyveId)
+  mapping(address => uint256) public userMinOrderNonce;
+  mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
+  mapping(bytes32 => Order) public orders;
 
   // The NFT's listing status
   enum ListingStatus {
-    LISTED,
     BORROWED,
     EXPIRED,
     CLOSED
   }
 
-  // A listing of an NFT on the website to be lent out
-  struct Listing {
-    uint256 dyveId;
+  struct Order {
+    bytes32 orderHash;
     address payable lender;
     address payable borrower;
-    uint256 expiryDateTime;
-    uint256 duration; 
     address collection;
     uint256 tokenId;
+    uint256 expiryDateTime;
     uint256 collateral;
-    uint256 fee;
     ListingStatus status;
   }
 
-  // OFF-CHAIN
-  event Cancel(address indexed borrower, address indexed lender, uint256 dyveId, uint256 tokenId);
-  event Update(uint256 dyveId, uint256 newFee, uint256 newCollateral, uint256 newDuration);
-  event List(
-    address indexed lender, 
-    uint256 dyveId, 
-    uint256 tokenId,
+  event TakerAsk(
+    bytes32 orderHash, // ask hash of the maker order
+    // uint256 orderNonce, // user order nonce
+    address indexed taker,
+    address indexed maker,
     address collection,
-    uint256 duration,
-    uint256 collateral,
-    uint256 fee,
-    ListingStatus status
-  );
-
-  event Borrow(
-    address indexed borrower,
-    address indexed lender,
-    uint256 dyveId,
     uint256 tokenId,
-    address collection,
-    uint256 duration,
     uint256 collateral,
     uint256 fee,
     uint256 expiryDateTime,
     ListingStatus status
   );
+
+  event TakerBid(
+    bytes32 orderHash, // ask hash of the maker order
+    // uint256 orderNonce, // user order nonce
+    address indexed taker,
+    address indexed maker,
+    address collection,
+    uint256 tokenId,
+    uint256 collateral,
+    uint256 fee,
+    uint256 expiryDateTime,
+    ListingStatus status
+  );
+
   event Close(
+    bytes32 orderHash,
     address indexed borrower, 
     address indexed lender, 
-    uint256 dyveId, 
-    uint256 tokenId, 
     address collection,
-    uint256 collateral,
+    uint256 tokenId, 
     uint256 returnedTokenId,
+    uint256 collateral,
     ListingStatus status
   );
+
   event Claim(
+    bytes32 orderHash,
     address indexed borrower,
     address indexed lender,
-    uint256 dyveId,
-    uint256 tokenId,
     address collection,
+    uint256 tokenId,
     uint256 collateral,
     ListingStatus status
   );
 
-  constructor(address _escrow) {
+  constructor(address _escrow, address _protocolFeeRecipient) {
     escrow = IEscrow(_escrow);
-  }
-
-  /**
-   * @notice Get listing details.
-   * @param dyveId the Dyve ID.
-   */
-  function getListing(uint256 dyveId) mustExist(dyveId) external view returns (Listing memory) {
-    return listings[dyveId];
-  }
-
-  /**
-   * @notice Get all listings held by Dyve.
-   */
-  function getAllListings() external view returns (Listing[] memory) {
-      Listing[] memory _listings = new Listing[](counter_dyveId);
-      for (uint256 i; i < _listings.length; i++) {
-        _listings[i] = listings[i + 1];
-      }
-      return _listings;
-  }
-
-  /**
-   * @notice List the NFT on Dyve as lender for someone to borrow and short sell.
-   * @param _collection The NFT Collection address.
-   * @param _tokenId The NFT Collection identifier from the _collection.
-   * @param _collateral the Collateral required from a borrower (later on when calling borrow) to borrow this item.
-   * @param _fee the Fee taken by the lender.
-   * @param _duration the Duration of the listing in seconds.
-   */
-  function list(address _collection, uint256 _tokenId, uint256 _collateral, uint256 _fee, uint256 _duration) external {
-      require(!nft_has_open_listing[_hashNFT(_collection, _tokenId)], "Already listed!");
-      require(_collateral > 0, "Collateral must be greater than 0");
-      require(_fee > 0, "Fee must be greater than 0");
-      require(_duration > 0, "Duration must be greater than 0");
-
-      counter_dyveId += 1;
-      nft_has_open_listing[_hashNFT(_collection, _tokenId)] = true;
-
-      listings[counter_dyveId] = Listing({
-            dyveId: counter_dyveId,
-            lender: payable(msg.sender),
-            borrower: payable(0),
-            expiryDateTime: 0,
-            duration: _duration,
-            collection: _collection,
-            tokenId: _tokenId,
-            collateral: _collateral,
-            fee: _fee,
-            status: ListingStatus.LISTED
-      });
-
-      // Step 2: Transfer NFT from seller to us
-      // @dev THIS REQUIRES THAT WE HAVE CALLED THE NFT CONTRACT TO APPROVE US ON BEHALF OF THE USER!
-      IERC721(_collection).safeTransferFrom(msg.sender, address(this), _tokenId);
-
-      emit List(msg.sender, counter_dyveId, _tokenId, _collection, _duration, _collateral, _fee, ListingStatus.LISTED);
-  }
-
-  /**
-   * @notice helper to hash an individual NFT for internal state tracking purposes.
-   */
-  function _hashNFT(address _collection, uint256 _nftID) private pure returns(bytes32) {
-    return keccak256(abi.encodePacked(_collection, _nftID));
-  }
-
-  /**
-   * @notice Make sure the dyveId is valid.
-   * @param dyveId the unique Dyve ID. Must be at least something that exists.
-   */
-  modifier mustExist(uint256 dyveId) {
-      require(dyveId <= counter_dyveId, "This listing does not exist!");
-      _;
-  }
-
-  /**
-   * @notice Make sure the listing has not been closed!
-   * @param dyveId the Dyve ID of the listing.
-   */
-  modifier mustNotBeExpiredOrClosed(uint256 dyveId) {
-    require((!(listings[dyveId].status == ListingStatus.CLOSED) &&
-             !(listings[dyveId].status == ListingStatus.EXPIRED)) &&
-              (listings[dyveId].expiryDateTime > 0) &&
-              (listings[dyveId].expiryDateTime > block.timestamp)
-             , "Closed or Expired!");
-    _;
-  }
-
-  /**
-   * @notice Check that a listing is open to be bought to short or borrowed.
-   * @dev aka the listing is LISTED
-   */
-  modifier mustBeListed(uint256 dyveId) {
-    require(listings[dyveId].status == ListingStatus.LISTED, "Not listed!");
-    _;
-  }
-
-  /**
-   * @notice Gives the borrower the ability to borrow from the lender. Need to return the same ID later.
-   * @param dyveId The Dyve ID of the listing.
-   */
-  function borrow(uint256 dyveId) external payable mustExist(dyveId) mustBeListed(dyveId) {
-    Listing storage listing = listings[dyveId];
-
-    require(listing.status == ListingStatus.LISTED, "this listing needs to be listed!");
-    require(listing.collateral + listing.fee <= msg.value, "Insufficient funds!");
-
-    listing.status = ListingStatus.BORROWED;
-    listing.borrower = payable(msg.sender);
-    listing.expiryDateTime = block.timestamp + listing.duration;
-
-    (bool collateralOk, ) = payable(address(escrow)).call{value: listing.collateral}("");
-    require(collateralOk, "Dyve: Failed to send collateral to Escrow");
-
-    (bool feeOk,) = payable(listing.lender).call{value: listing.fee}("");
-    require(feeOk, "Dyve: Transfer of fee to seller failed!");
-
-    // transfer the NFT to the borrower
-    IERC721(listing.collection).safeTransferFrom(address(this), msg.sender, listing.tokenId);
-
-    emit Borrow(
-      msg.sender,
-      listing.lender,
-      dyveId,
-      listing.tokenId,
-      listing.collection,
-      listing.duration,
-      listing.collateral,
-      listing.fee,
-      listing.expiryDateTime,
-      listing.status
+    protocolFeeRecipient = _protocolFeeRecipient;
+    DOMAIN_SEPARATOR = keccak256(
+      abi.encode(
+          0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f, // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+          0x5ba1c976ab8ccf6a5989edf209a623864756135194c073f47cac79e46eff2be3, // keccak256("Dyve")
+          0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6, // keccak256(bytes("1")) for versionId = 1
+          block.chainid,
+          address(this)
+      )
     );
-    // collateral is stored as ETH in the contract @TODO: Store this in a mapping.
-  }
-  
-  /**
-   * @notice Close an open Short position. The borrower specifies the ID in the collection they are returning.
-   * @dev we check that the borrower owns the incoming ID from the collection.
-   * @param dyveId the Dyve ID of the listing we are closing.
-   * @param _returnTokenId the ID of the NFT item from the collection that the borrower is returning
-   */
-  function closePosition(uint256 dyveId, uint256 _returnTokenId) external payable mustExist(dyveId) mustNotBeExpiredOrClosed(dyveId) {
-
-        // TODO can we save gas by loading into memory, then make changes, then store back?
-        Listing storage listing = listings[dyveId];
-
-        // Require that the borrower owns it from the collection:
-        require(keccak256(abi.encodePacked(IERC721(listing.collection).ownerOf(_returnTokenId))) == keccak256(abi.encodePacked(listing.borrower)), "the borrower does not own the incoming NFT");
-
-        // if (listing.status == ListingStatus.BORROWED) {
-        //   // the ID needs to match in case of a pure borrow
-        //   require(listing.tokenId == _returnTokenId, "The item returned is not the same!");
-        // }
-
-        // make listing changes
-        listing.status = ListingStatus.CLOSED;
-
-        // move the incoming NFT from borrower to lender -- the lender is made whole
-        IERC721(listing.collection).safeTransferFrom(listing.borrower, listing.lender, _returnTokenId);
-
-        // unlock and transfer collateral from dyve to lender
-        require(address(escrow).balance >= listing.collateral, "insufficient contract funds!");
-
-        if (!claimed_collateral[dyveId]) {
-          bool ok = escrow.releaseCollateral(listing.borrower, listing.collateral);
-          require(ok, "Dyve: transfer of collateral from Dyve to lender failed!");
-
-          claimed_collateral[dyveId] = true;
-        }
-
-        emit Close(
-          listing.borrower,
-          listing.lender,
-          listing.dyveId,
-          listing.tokenId,
-          listing.collection,
-          listing.collateral,
-          _returnTokenId,
-          listing.status
-        );
-
-        nft_has_open_listing[_hashNFT(listing.collection, listing.tokenId)] = false;
   }
 
   /**
-   * @notice Cancel an active listing (which has not been lent out yet!).
-   * @param dyveId The Dyve ID of the listing to cancel.
-   */
-  function cancel(uint256 dyveId) external mustExist(dyveId) mustBeListed(dyveId){
-    Listing storage listing = listings[dyveId];
-    require(listing.lender == msg.sender, "Not authorized!");
+  * @notice Match a takerBid with a matchAsk
+  * @param takerBid taker bid order
+  * @param makerAsk maker ask order
+  */
+  function matchAskWithTakerBid(OrderTypes.TakerOrder calldata takerBid, OrderTypes.MakerOrder calldata makerAsk)
+      external
+      payable
+      nonReentrant
+  {
+    require((makerAsk.isOrderAsk) && (!takerBid.isOrderAsk), "Order: Wrong sides");
+    require(msg.sender == takerBid.taker, "Order: Taker must be the sender");
 
-    listings[dyveId].status = ListingStatus.CLOSED;
+    // Check the maker ask order
+    bytes32 askHash = makerAsk.hash();
+    _validateOrder(makerAsk, askHash);
 
-    // transfer the NFT back to the lender (will require approval)
-    IERC721(listing.collection).safeTransferFrom(address(this), msg.sender, listing.tokenId);
+    orders[askHash] = Order({
+      orderHash: askHash,
+      lender: payable(makerAsk.signer),
+      borrower: payable(takerBid.taker),
+      collection: makerAsk.collection,
+      tokenId: makerAsk.tokenId,
+      expiryDateTime: block.timestamp + makerAsk.duration,
+      collateral: makerAsk.collateral,
+      status: ListingStatus.BORROWED
+    });
 
-    emit Cancel(listing.borrower, listing.lender, listing.dyveId, listing.tokenId);
+    _transferFeesAndFunds(makerAsk.signer, takerBid.fee, takerBid.collateral);
 
-    nft_has_open_listing[_hashNFT(listing.collection, listing.tokenId)] = false;
+    IERC721(makerAsk.collection).safeTransferFrom(makerAsk.signer, takerBid.taker, makerAsk.tokenId);
+
+    emit TakerBid(
+      askHash,
+      takerBid.taker,
+      makerAsk.signer,
+      makerAsk.collection,
+      makerAsk.tokenId,
+      takerBid.collateral,
+      takerBid.fee,
+      orders[askHash].expiryDateTime,
+      ListingStatus.BORROWED
+    );
   }
 
   /**
-   * @notice update a listing with a new fee.
-   * @param dyveId the Dyve ID/listing to update.
-   * @param _fee the new fee for the listing.
-   * @param _collateral the new collateral for the listing.
-   * @param _duration the new duration for the listing.
-   */
-  function update(uint256 dyveId, uint256 _fee, uint256 _collateral, uint256 _duration) external mustExist(dyveId) mustBeListed(dyveId) {
-    require(_fee > 0, "fee must be greater than 0");
-    require(_collateral > 0, "collateral must be greater than 0");
-    require(_duration > 0, "duration must be greater than 0");
+  * @notice Return back an NFT to the lender and release collateral to the borrower
+  * @dev we check that the borrower owns the incoming ID from the collection.
+  * @param orderHash order hash of the maker order
+  * @param returnTokenId the NFT to be returned
+  */
+  function closePosition(bytes32 orderHash, uint256 returnTokenId) external {
+    Order storage order = orders[orderHash];
 
-    listings[dyveId].fee = _fee;
-    listings[dyveId].collateral = _collateral;
-    listings[dyveId].duration = _duration;
+    require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning NFT");
+    require(order.borrower == msg.sender, "Order: Borrower must be the sender");
+    require(order.expiryDateTime > block.timestamp, "Order: Order expired");
+    require(order.status == ListingStatus.BORROWED, "Order: Order is not borrowed");
 
-    emit Update(dyveId, _fee, _collateral, _duration);
+    order.status = ListingStatus.CLOSED;
+
+    // 1. Transfer the NFT back to the lender
+    IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
+
+    // 2. Transfer the collateral from the escrow account to the borrower
+    require(address(escrow).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+
+    bool ok = escrow.releaseCollateral(order.borrower, order.collateral);
+    require(ok, "Dyve: transfer of collateral from Dyve to borrower failed!");
+
+    emit Close(
+      order.orderHash,
+      order.borrower,
+      order.lender,
+      order.collection,
+      order.tokenId,
+      returnTokenId,
+      order.collateral,
+      order.status
+    );
   }
 
   /**
-   * @notice Claim collateral in the event of the listing expiring (the borrower being unresponsive, e.g.).
-   * @param dyveId the Dyve ID of the listing to update.
-   * @dev the listing must exist. Must not already be closed and expired
-   */
-  function claimCollateral(uint256 dyveId) external payable mustExist(dyveId) {
-    Listing memory listing = listings[dyveId];
+  * @notice Releases collateral to the lender for the expired borrow
+  * @param orderHash order hash of the maker order
+  */
+  function claimCollateral(bytes32 orderHash) external {
+    Order storage order = orders[orderHash];
 
-    if(
-      (listing.status == ListingStatus.BORROWED) &&
-      (listing.expiryDateTime > 0) &&
-      (block.timestamp >= listing.expiryDateTime)
-    )
+    require(order.lender == msg.sender, "Order: Lender must be the sender");
+    require(order.expiryDateTime <= block.timestamp, "Order: Order is not expired");
+    require(order.status == ListingStatus.BORROWED, "Order: Order is not borrowed");
+
+    order.status = ListingStatus.EXPIRED;
+
+    // 2. Transfer the collateral from the escrow account to the borrower
+    require(address(escrow).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+
+    bool ok = escrow.releaseCollateral(order.lender, order.collateral);
+    require(ok, "Dyve: transfer of collateral from Dyve to lender failed!");
+
+    emit Claim(
+      order.orderHash,
+      order.borrower,
+      order.lender,
+      order.collection,
+      order.tokenId,
+      order.collateral,
+      order.status
+    );
+  }
+
+  // Helper functions
+  /** 
+  * @notice Transfer fees, collateral and protocol fee to the Lender, Escrow and procotol respectively
+  * @param to Address of recipient to receive the fees (Lender)
+  * @param fee Fee amount being transffered to Lender (in ETH)
+  * @param collateral Collateral amount being deposited to Escrow (in ETH)
+  */
+  function _transferFeesAndFunds(address to, uint256 fee, uint256 collateral) internal {
+    bool ok;
+
+    // 1. Protocol fee
     {
-      // transfer the collateral from Dyve to the lender because the listing expired!
-      listings[dyveId].status = ListingStatus.EXPIRED;
-
-      require(address(escrow).balance >= listing.collateral, "Insufficient funds to transfer");
-
-      if (!claimed_collateral[dyveId]) {
-        bool ok = escrow.releaseCollateral(listing.lender, listing.collateral);
-        require(ok, "Transfer failed!");
-
-        claimed_collateral[dyveId] = true;
-      }
-
-      emit Claim(
-        listing.borrower,
-        listing.lender,
-        listing.dyveId,
-        listing.tokenId,
-        listing.collection,
-        listing.collateral,
-        listing.status
-      );
-
-      nft_has_open_listing[_hashNFT(listing.collection, listing.tokenId)] = false;
+      uint256 protocolFee = (fee * 2) / 100;
+      (ok, ) = payable(protocolFeeRecipient).call{value: protocolFee}("");
+      require(ok, "Dyve: Failed to transfer protocol fee");
     }
+
+    // 2. Fee Transfer
+    {
+      (ok, ) = payable(to).call{value: fee}("");
+      require(ok, "Dyve: Failed to transfer fee to lender");
+    }
+
+    // 3. Colalteral Transfer
+    {
+      (ok, ) = payable(address(escrow)).call{value: collateral}("");
+      require(ok, "Dyve: Failed to send collateral to Escrow");
+    }
+  }
+
+  /**
+  * @notice Verify the validity of the maker order
+  * @param makerOrder maker order
+  * @param orderHash computed hash for the order
+  */
+  function _validateOrder(OrderTypes.MakerOrder calldata makerOrder, bytes32 orderHash) internal view {
+      // Verify the signer is not address(0)
+      require(makerOrder.signer != address(0), "Order: Invalid signer");
+
+      // Verify the fee and collateral are not 0
+      require(makerOrder.fee > 0, "Order: fee cannot be 0");
+      require(makerOrder.collateral > 0, "Order: collateral cannot be 0");
+
+      // bytes32 askHash = makerAsk.hash();
+      // _validateOrder(makerAsk, askHash);
+      // Verify the validity of the signature
+      require(
+          SignatureChecker.verify(
+              orderHash,
+              makerOrder.signer,
+              makerOrder.v,
+              makerOrder.r,
+              makerOrder.s,
+              DOMAIN_SEPARATOR
+          ),
+          "Signature: Invalid"
+      );
   }
 
   function updateEscrow(address _escrow) external onlyOwner {
     require(_escrow != address(0), "Owner: Cannot be null address");
     escrow = IEscrow(_escrow);
- 
-  }
-
-  /**
-   * @notice Implemented to support the Safe Transfer mechanism.
-   */
-  function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
-    return IERC721Receiver.onERC721Received.selector;
   }
 }

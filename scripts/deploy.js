@@ -1,13 +1,18 @@
 const hre = require("hardhat");
 
 async function main() {
+  const ProtocolFeeRecipient = await hre.ethers.getContractFactory("Escrow");
+  const protocolFeeRecipient = await ProtocolFeeRecipient.deploy();
+  await protocolFeeRecipient.deployed();
+  console.log("Protocol Fee Recipient deployed", protocolFeeRecipient.address);
+
   const Escrow = await hre.ethers.getContractFactory("Escrow");
   const escrow = await Escrow.deploy();
   await escrow.deployed();
   console.log("Escrow contract deployed", escrow.address);
 
   const Dyve = await hre.ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(escrow.address);
+  const dyve = await Dyve.deploy(escrow.address, protocolFeeRecipient.address);
   const tx = await dyve.deployTransaction.wait();
 
   console.log("block number: ", tx.blockNumber);

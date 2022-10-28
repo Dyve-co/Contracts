@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-// Dyve interfaces
-import "./interfaces/IERC721.sol";
-
 contract Escrow {
   constructor() {}
 
