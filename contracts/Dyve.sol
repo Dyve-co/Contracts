@@ -7,7 +7,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 // Dyve Interfaces
-import {IEscrow} from "./interfaces/IEscrow.sol";
 import {OrderTypes} from "./libraries/OrderTypes.sol";
 import {SignatureChecker} from "./libraries/SignatureChecker.sol";
 
@@ -19,8 +18,6 @@ contract Dyve is ReentrancyGuard, Ownable {
   using OrderTypes for OrderTypes.MakerOrder;
   using OrderTypes for OrderTypes.TakerOrder;
 
-  IEscrow public escrow;
-  
   bytes32 public immutable DOMAIN_SEPARATOR;
   address public protocolFeeRecipient;
 
@@ -46,6 +43,7 @@ contract Dyve is ReentrancyGuard, Ownable {
     ListingStatus status;
   }
 
+  event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
   event TakerAsk(
     bytes32 orderHash, // ask hash of the maker order
@@ -96,18 +94,29 @@ contract Dyve is ReentrancyGuard, Ownable {
     ListingStatus status
   );
 
-  constructor(address _escrow, address _protocolFeeRecipient) {
-    escrow = IEscrow(_escrow);
+  constructor(address _protocolFeeRecipient) {
     protocolFeeRecipient = _protocolFeeRecipient;
     DOMAIN_SEPARATOR = keccak256(
       abi.encode(
-          0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f, // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-          0x5ba1c976ab8ccf6a5989edf209a623864756135194c073f47cac79e46eff2be3, // keccak256("Dyve")
-          0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6, // keccak256(bytes("1")) for versionId = 1
-          block.chainid,
-          address(this)
+        0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f, // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+        0x5ba1c976ab8ccf6a5989edf209a623864756135194c073f47cac79e46eff2be3, // keccak256("Dyve")
+        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6, // keccak256(bytes("1")) for versionId = 1
+        block.chainid,
+        address(this)
       )
     );
+  }
+
+  /**
+  * @notice Cancel all pending orders for a sender
+  * @param minNonce minimum user nonce
+  */
+  function cancelAllOrdersForSender(uint256 minNonce) external {
+    require(minNonce > userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
+    require(minNonce < userMinOrderNonce[msg.sender] + 500000, "Cancel: Cannot cancel more orders");
+    userMinOrderNonce[msg.sender] = minNonce;
+
+    emit CancelAllOrders(msg.sender, minNonce);
   }
 
   /**
@@ -118,7 +127,7 @@ contract Dyve is ReentrancyGuard, Ownable {
     require(orderNonces.length > 0, "Cancel: Cannot be empty");
 
     for (uint256 i = 0; i < orderNonces.length; i++) {
-      // require(orderNonces[i] >= userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
+      require(orderNonces[i] >= userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
     }
 
@@ -155,7 +164,7 @@ contract Dyve is ReentrancyGuard, Ownable {
       status: ListingStatus.BORROWED
     });
 
-    _transferFeesAndFunds(makerAsk.signer, takerBid.fee, takerBid.collateral);
+    _transferFeesAndFunds(makerAsk.signer, takerBid.fee);
 
     IERC721(makerAsk.collection).safeTransferFrom(makerAsk.signer, takerBid.taker, makerAsk.tokenId);
 
@@ -194,10 +203,10 @@ contract Dyve is ReentrancyGuard, Ownable {
     IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
 
     // 2. Transfer the collateral from the escrow account to the borrower
-    require(address(escrow).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+    require(address(this).balance >= order.collateral, "Order: insufficient escrow contract funds!");
 
-    bool ok = escrow.releaseCollateral(order.borrower, order.collateral);
-    require(ok, "Dyve: transfer of collateral from Dyve to borrower failed!");
+    (bool ok,) = payable(order.borrower).call{value: order.collateral}("");
+    require(ok, "Order: transfer of collateral from Dyve to borrower failed!");
 
     emit Close(
       order.orderHash,
@@ -225,10 +234,10 @@ contract Dyve is ReentrancyGuard, Ownable {
     order.status = ListingStatus.EXPIRED;
 
     // 2. Transfer the collateral from the escrow account to the borrower
-    require(address(escrow).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+    require(address(this).balance >= order.collateral, "Order: insufficient escrow contract funds!");
 
-    bool ok = escrow.releaseCollateral(order.lender, order.collateral);
-    require(ok, "Dyve: transfer of collateral from Dyve to lender failed!");
+    (bool ok,) = payable(order.lender).call{value: order.collateral}("");
+    require(ok, "Order: transfer of collateral from Dyve to lender failed!");
 
     emit Claim(
       order.orderHash,
@@ -246,28 +255,21 @@ contract Dyve is ReentrancyGuard, Ownable {
   * @notice Transfer fees, collateral and protocol fee to the Lender, Escrow and procotol respectively
   * @param to Address of recipient to receive the fees (Lender)
   * @param fee Fee amount being transffered to Lender (in ETH)
-  * @param collateral Collateral amount being deposited to Escrow (in ETH)
   */
-  function _transferFeesAndFunds(address to, uint256 fee, uint256 collateral) internal {
+  function _transferFeesAndFunds(address to, uint256 fee) internal {
     bool ok;
 
     // 1. Protocol fee
     {
       uint256 protocolFee = (fee * 2) / 100;
       (ok, ) = payable(protocolFeeRecipient).call{value: protocolFee}("");
-      require(ok, "Dyve: Failed to transfer protocol fee");
+      require(ok, "Order: Failed to transfer protocol fee");
     }
 
-    // 2. Fee Transfer
+    // 2. Lender Fee Transfer
     {
       (ok, ) = payable(to).call{value: fee}("");
-      require(ok, "Dyve: Failed to transfer fee to lender");
-    }
-
-    // 3. Colalteral Transfer
-    {
-      (ok, ) = payable(address(escrow)).call{value: collateral}("");
-      require(ok, "Dyve: Failed to send collateral to Escrow");
+      require(ok, "Order: Failed to transfer fee to lender");
     }
   }
 
@@ -280,7 +282,8 @@ contract Dyve is ReentrancyGuard, Ownable {
       // Verify the signer is not address(0)
       require(makerOrder.signer != address(0), "Order: Invalid signer");
       require(
-        (!_isUserOrderNonceExecutedOrCancelled[makerOrder.signer][makerOrder.nonce]),
+        (!_isUserOrderNonceExecutedOrCancelled[makerOrder.signer][makerOrder.nonce]) &&
+          (makerOrder.nonce >= userMinOrderNonce[makerOrder.signer]),
         "Order: Matching order listing expired"
       );
 
@@ -300,10 +303,5 @@ contract Dyve is ReentrancyGuard, Ownable {
           ),
           "Signature: Invalid"
       );
-  }
-
-  function updateEscrow(address _escrow) external onlyOwner {
-    require(_escrow != address(0), "Owner: Cannot be null address");
-    escrow = IEscrow(_escrow);
   }
 }
