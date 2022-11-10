@@ -16,10 +16,6 @@ async function main() {
   const tx = await dyve.deployTransaction.wait();
   console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);
-
-  const setDyveTx = await escrow.setExchangeContractAddress(dyve.address);
-  await setDyveTx.wait();
-  console.log("dyve contract set in Escrow")
 }
 
 // We recommend this pattern to be able to use async/await everywhere
