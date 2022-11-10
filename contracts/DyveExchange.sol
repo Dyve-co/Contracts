@@ -4,10 +4,11 @@ pragma solidity ^0.8.9;
 // OZ libraries
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 // Dyve Interfaces
 import {IEscrow} from "./interfaces/IEscrow.sol";
+import {IOrderManager} from "./interfaces/IOrderManager.sol";
+import {INonceManager} from "./interfaces/INonceManager.sol";
 import {OrderTypes} from "./libraries/OrderTypes.sol";
 import {SignatureChecker} from "./libraries/SignatureChecker.sol";
 
@@ -15,38 +16,17 @@ import {SignatureChecker} from "./libraries/SignatureChecker.sol";
  * @notice The Dyve Contract to handle short Selling of NFTs.
  * @dev implements the IERC721Receiver so we can use the safeTransferFrom mechanism.
  */
-contract Dyve is ReentrancyGuard, Ownable {
+contract DyveExchange is ReentrancyGuard, Ownable {
   using OrderTypes for OrderTypes.MakerOrder;
   using OrderTypes for OrderTypes.TakerOrder;
 
   IEscrow public escrow;
+  IOrderManager public orderManager;
+  INonceManager public nonceManager;
   
   bytes32 public immutable DOMAIN_SEPARATOR;
   address public protocolFeeRecipient;
 
-  mapping(address => uint256) public userMinOrderNonce;
-  mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
-  mapping(bytes32 => Order) public orders;
-
-  // The NFT's listing status
-  enum ListingStatus {
-    BORROWED,
-    EXPIRED,
-    CLOSED
-  }
-
-  struct Order {
-    bytes32 orderHash;
-    address payable lender;
-    address payable borrower;
-    address collection;
-    uint256 tokenId;
-    uint256 expiryDateTime;
-    uint256 collateral;
-    ListingStatus status;
-  }
-
-  event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
   event TakerAsk(
     bytes32 orderHash, // ask hash of the maker order
     uint256 orderNonce, // user order nonce
@@ -75,30 +55,17 @@ contract Dyve is ReentrancyGuard, Ownable {
     ListingStatus status
   );
 
-  event Close(
-    bytes32 orderHash,
-    address indexed borrower, 
-    address indexed lender, 
-    address collection,
-    uint256 tokenId, 
-    uint256 returnedTokenId,
-    uint256 collateral,
-    ListingStatus status
-  );
-
-  event Claim(
-    bytes32 orderHash,
-    address indexed borrower,
-    address indexed lender,
-    address collection,
-    uint256 tokenId,
-    uint256 collateral,
-    ListingStatus status
-  );
-
-  constructor(address _escrow, address _protocolFeeRecipient) {
+  constructor(
+    address _escrow, 
+    address _protocolFeeRecipient,
+    address _orderManager,
+    address _nonceManager
+  ) {
     escrow = IEscrow(_escrow);
+    orderManager = IOrderManager(_orderManager);
+    nonceManager = INonceManager(_nonceManager);
     protocolFeeRecipient = _protocolFeeRecipient;
+
     DOMAIN_SEPARATOR = keccak256(
       abi.encode(
           0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f, // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
@@ -111,29 +78,14 @@ contract Dyve is ReentrancyGuard, Ownable {
   }
 
   /**
-  * @notice Cancel maker orders
-  * @param orderNonces array of order nonces
-  */
-  function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
-    require(orderNonces.length > 0, "Cancel: Cannot be empty");
-
-    for (uint256 i = 0; i < orderNonces.length; i++) {
-      // require(orderNonces[i] >= userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
-      _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
-    }
-
-    emit CancelMultipleOrders(msg.sender, orderNonces);
-  }
-
-  /**
   * @notice Match a takerBid with a matchAsk
   * @param takerBid taker bid order
   * @param makerAsk maker ask order
   */
   function matchAskWithTakerBid(OrderTypes.TakerOrder calldata takerBid, OrderTypes.MakerOrder calldata makerAsk)
-      external
-      payable
-      nonReentrant
+    external
+    payable
+    nonReentrant
   {
     require((makerAsk.isOrderAsk) && (!takerBid.isOrderAsk), "Order: Wrong sides");
     require(msg.sender == takerBid.taker, "Order: Taker must be the sender");
@@ -142,18 +94,19 @@ contract Dyve is ReentrancyGuard, Ownable {
     bytes32 askHash = makerAsk.hash();
     _validateOrder(makerAsk, askHash);
 
-    _isUserOrderNonceExecutedOrCancelled[msg.sender][makerAsk.nonce] = true;
+    // Update maker ask order status to true (prevents replay)
+    nonceManager.setExecutedUserOrderNonce(makerAsk.nonce);
 
-    orders[askHash] = Order({
-      orderHash: askHash,
-      lender: payable(makerAsk.signer),
-      borrower: payable(takerBid.taker),
-      collection: makerAsk.collection,
-      tokenId: makerAsk.tokenId,
-      expiryDateTime: block.timestamp + makerAsk.duration,
-      collateral: makerAsk.collateral,
-      status: ListingStatus.BORROWED
-    });
+    // Create order
+    orderManager.createOrder(
+      askHash,
+      payable(makerAsk.signer),
+      payable(takerBid.taker),
+      makerAsk.collection,
+      makerAsk.tokenId,
+      block.timestamp + makerAsk.duration,
+      makerAsk.collateral
+    );
 
     _transferFeesAndFunds(makerAsk.signer, takerBid.fee, takerBid.collateral);
 
@@ -175,69 +128,62 @@ contract Dyve is ReentrancyGuard, Ownable {
   }
 
   /**
-  * @notice Return back an NFT to the lender and release collateral to the borrower
-  * @dev we check that the borrower owns the incoming ID from the collection.
-  * @param orderHash order hash of the maker order
-  * @param returnTokenId the NFT to be returned
+  * @notice Match a takerAsk with a makerBid
+  * @param takerAsk taker ask order
+  * @param makerBid maker bid order
   */
-  function closePosition(bytes32 orderHash, uint256 returnTokenId) external {
-    Order storage order = orders[orderHash];
+  function matchBidWithTakerAsk(OrderTypes.TakerOrder calldata takerAsk, OrderTypes.MakerOrder calldata makerBid)
+    external
+    nonReentrant
+  {
+      require((!makerBid.isOrderAsk) && (takerAsk.isOrderAsk), "Order: Wrong sides");
+      require(msg.sender == takerAsk.taker, "Order: Taker must be the sender");
 
-    require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning NFT");
-    require(order.borrower == msg.sender, "Order: Borrower must be the sender");
-    require(order.expiryDateTime > block.timestamp, "Order: Order expired");
-    require(order.status == ListingStatus.BORROWED, "Order: Order is not borrowed");
+      // Check the maker bid order
+      bytes32 bidHash = makerBid.hash();
+      _validateOrder(makerBid, bidHash);
 
-    order.status = ListingStatus.CLOSED;
+      // Update maker bid order status to true (prevents replay)
+      nonceManager.setExecutedUserOrderNonce(makerBid.nonce);
 
-    // 1. Transfer the NFT back to the lender
-    IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
+      // Create order
+      orderManager.createOrder(
+        askHash,
+        payable(makerAsk.signer),
+        payable(takerBid.taker),
+        makerAsk.collection,
+        makerAsk.tokenId,
+        block.timestamp + makerAsk.duration,
+        makerAsk.collateral
+      );
 
-    // 2. Transfer the collateral from the escrow account to the borrower
-    require(address(escrow).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+      IERC721(makerAsk.collection).safeTransferFrom(makerAsk.signer, takerBid.taker, makerAsk.tokenId);
 
-    bool ok = escrow.releaseCollateral(order.borrower, order.collateral);
-    require(ok, "Dyve: transfer of collateral from Dyve to borrower failed!");
+      _transferFeesAndFunds(makerAsk.signer, takerBid.fee, takerBid.collateral);
 
-    emit Close(
-      order.orderHash,
-      order.borrower,
-      order.lender,
-      order.collection,
-      order.tokenId,
-      returnTokenId,
-      order.collateral,
-      order.status
-    );
-  }
+      // _transferFeesAndFunds(
+      //     makerBid.strategy,
+      //     makerBid.collection,
+      //     tokenId,
+      //     makerBid.currency,
+      //     makerBid.signer,
+      //     takerAsk.taker,
+      //     takerAsk.price,
+      //     takerAsk.minPercentageToAsk
+      // );
 
-  /**
-  * @notice Releases collateral to the lender for the expired borrow
-  * @param orderHash order hash of the maker order
-  */
-  function claimCollateral(bytes32 orderHash) external {
-    Order storage order = orders[orderHash];
-
-    require(order.lender == msg.sender, "Order: Lender must be the sender");
-    require(order.expiryDateTime <= block.timestamp, "Order: Order is not expired");
-    require(order.status == ListingStatus.BORROWED, "Order: Order is not borrowed");
-
-    order.status = ListingStatus.EXPIRED;
-
-    // 2. Transfer the collateral from the escrow account to the borrower
-    require(address(escrow).balance >= order.collateral, "Order: insufficient escrow contract funds!");
-
-    bool ok = escrow.releaseCollateral(order.lender, order.collateral);
-    require(ok, "Dyve: transfer of collateral from Dyve to lender failed!");
-
-    emit Claim(
-      order.orderHash,
-      order.borrower,
-      order.lender,
-      order.collection,
-      order.tokenId,
-      order.collateral,
-      order.status
+      emit TakerAsk(
+      askHash,
+      makerAsk.nonce,
+      takerBid.taker,
+      makerAsk.signer,
+      makerAsk.collection,
+      makerAsk.tokenId,
+      takerBid.collateral,
+      takerBid.fee,
+      makerAsk.duration,
+      orders[askHash].expiryDateTime,
+      ListingStatus.BORROWED
     );
   }
 
@@ -280,7 +226,7 @@ contract Dyve is ReentrancyGuard, Ownable {
       // Verify the signer is not address(0)
       require(makerOrder.signer != address(0), "Order: Invalid signer");
       require(
-        (!_isUserOrderNonceExecutedOrCancelled[makerOrder.signer][makerOrder.nonce]),
+        !nonceManager.isUserOrderNonceExecutedOrCancelled(makerOrder.nonce),
         "Order: Matching order listing expired"
       );
 
@@ -305,5 +251,15 @@ contract Dyve is ReentrancyGuard, Ownable {
   function updateEscrow(address _escrow) external onlyOwner {
     require(_escrow != address(0), "Owner: Cannot be null address");
     escrow = IEscrow(_escrow);
+  }
+
+  function updateOrderManager(address _orderManager) external onlyOwner {
+    require(_orderManager != address(0), "Owner: Cannot be null address");
+    orderManager = IOrderManager(_orderManager);
+  }
+
+  function updateNonceManager(address _nonceManager) external onlyOwner {
+    require(_nonceManager != address(0), "Owner: Cannot be null address");
+    nonceManager = INonceManager(_nonceManager);
   }
 }
