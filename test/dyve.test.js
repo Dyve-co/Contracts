@@ -69,10 +69,11 @@ const computeOrderHash = (order) => {
     "uint256",
     "uint256",
     "uint256",
+    "uint256",
   ]
 
   const values = [
-    "0xfbfa4cc51bd328a406baa169f7be8d728dd273ef5990252068e9d9446ce23a46",
+    "0xdc2ec73446e2f2be13384f113009c234f3c341a7706ebec11889644c41ad74d3",
     order.isOrderAsk,
     order.signer,
     order.collection,
@@ -80,6 +81,7 @@ const computeOrderHash = (order) => {
     order.duration,
     order.collateral,
     order.fee,
+    order.nonce,
     order.startTime,
     order.endTime,
   ]
@@ -97,6 +99,7 @@ describe("Dyve", function () {
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
+      nonce: 100,
       startTime: Math.floor(Date.now() / 1000),
       endTime: Math.floor(Date.now() / 1000) + 86400,
     }
@@ -142,12 +145,14 @@ describe("Dyve", function () {
     .to.emit(dyve, "TakerBid")
     .withArgs(
       order.orderHash,
+      order.nonce,
       order.borrower,
       order.lender,
       order.collection,
       order.tokenId,
       order.collateral,
       data.fee,
+      order.duration,
       order.expiryDateTime,
       order.status,
     )
@@ -162,6 +167,7 @@ describe("Dyve", function () {
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
+      nonce: 100,
       startTime: Math.floor(Date.now() / 1000),
       endTime: Math.floor(Date.now() / 1000) + 86400,
     }
@@ -212,7 +218,7 @@ describe("Dyve", function () {
     )
   })
 
-  it("consumes Maker Bid Listing then closes the position", async () => {
+  it("consumes Maker Bid Listing then the lender claims the collateral", async () => {
     const data = {
       isOrderAsk: true,
       signer: owner.address,
@@ -221,6 +227,7 @@ describe("Dyve", function () {
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
+      nonce: 100,
       startTime: Math.floor(Date.now() / 1000),
       endTime: Math.floor(Date.now() / 1000) + 86400,
     }
@@ -256,16 +263,54 @@ describe("Dyve", function () {
     expect(order.status).to.equal(1);
 
     expect(claimTx)
-    .to.emit(dyve, "Close")
+    .to.emit(dyve, "Claim")
     .withArgs(
       order.orderHash,
       order.borrower,
       order.lender,
       order.collection,
       order.tokenId,
-      1,
       order.collateral,
       order.status,
     )
+  })
+
+  it("cancels an order and then fails to list the same order", async () => {
+    const cancelTx = await dyve.cancelMultipleMakerOrders([100]);
+    await cancelTx.wait()
+
+    const data = {
+      isOrderAsk: true,
+      signer: owner.address,
+      collection: lender.address,
+      tokenId: 1,
+      duration: 10800,
+      collateral: ethers.utils.parseEther("1").toString(),
+      fee: ethers.utils.parseEther("0.1").toString(),
+      nonce: 100,
+      startTime: Math.floor(Date.now() / 1000),
+      endTime: Math.floor(Date.now() / 1000) + 86400,
+    }
+
+    const signature = await generateSignature(data, owner, dyve)
+    const makerOrder = { ...data, ...signature }
+    const takerOrder = {
+      isOrderAsk: false,
+      taker: addr1.address,
+      collateral: makerOrder.collateral,
+      fee: makerOrder.fee,
+      tokenId: makerOrder.tokenId,
+    }
+
+    const lenderApproveTx = await lender.setApprovalForAll(dyve.address, true);
+    await lenderApproveTx.wait();
+
+    const totalAmount = ethers.utils.parseEther(String(1 + (0.1 * 1.02))).toString();
+    await expect(dyve.connect(addr1).matchAskWithTakerBid(takerOrder, makerOrder, { value: totalAmount }))
+      .to.be.rejectedWith("Order: Matching order listing expired")
+
+    expect(cancelTx)
+    .to.emit(dyve, "Cancel")
+    .withArgs(owner.address, [100])
   })
 })

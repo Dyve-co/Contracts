@@ -46,28 +46,31 @@ contract Dyve is ReentrancyGuard, Ownable {
     ListingStatus status;
   }
 
+  event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
   event TakerAsk(
     bytes32 orderHash, // ask hash of the maker order
-    // uint256 orderNonce, // user order nonce
+    uint256 orderNonce, // user order nonce
     address indexed taker,
     address indexed maker,
     address collection,
     uint256 tokenId,
     uint256 collateral,
     uint256 fee,
+    uint256 duration,
     uint256 expiryDateTime,
     ListingStatus status
   );
 
   event TakerBid(
     bytes32 orderHash, // ask hash of the maker order
-    // uint256 orderNonce, // user order nonce
+    uint256 orderNonce, // user order nonce
     address indexed taker,
     address indexed maker,
     address collection,
     uint256 tokenId,
     uint256 collateral,
     uint256 fee,
+    uint256 duration,
     uint256 expiryDateTime,
     ListingStatus status
   );
@@ -108,6 +111,21 @@ contract Dyve is ReentrancyGuard, Ownable {
   }
 
   /**
+  * @notice Cancel maker orders
+  * @param orderNonces array of order nonces
+  */
+  function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
+    require(orderNonces.length > 0, "Cancel: Cannot be empty");
+
+    for (uint256 i = 0; i < orderNonces.length; i++) {
+      // require(orderNonces[i] >= userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
+      _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
+    }
+
+    emit CancelMultipleOrders(msg.sender, orderNonces);
+  }
+
+  /**
   * @notice Match a takerBid with a matchAsk
   * @param takerBid taker bid order
   * @param makerAsk maker ask order
@@ -123,6 +141,8 @@ contract Dyve is ReentrancyGuard, Ownable {
     // Check the maker ask order
     bytes32 askHash = makerAsk.hash();
     _validateOrder(makerAsk, askHash);
+
+    _isUserOrderNonceExecutedOrCancelled[msg.sender][makerAsk.nonce] = true;
 
     orders[askHash] = Order({
       orderHash: askHash,
@@ -141,12 +161,14 @@ contract Dyve is ReentrancyGuard, Ownable {
 
     emit TakerBid(
       askHash,
+      makerAsk.nonce,
       takerBid.taker,
       makerAsk.signer,
       makerAsk.collection,
       makerAsk.tokenId,
       takerBid.collateral,
       takerBid.fee,
+      makerAsk.duration,
       orders[askHash].expiryDateTime,
       ListingStatus.BORROWED
     );
@@ -257,13 +279,15 @@ contract Dyve is ReentrancyGuard, Ownable {
   function _validateOrder(OrderTypes.MakerOrder calldata makerOrder, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
       require(makerOrder.signer != address(0), "Order: Invalid signer");
+      require(
+        (!_isUserOrderNonceExecutedOrCancelled[makerOrder.signer][makerOrder.nonce]),
+        "Order: Matching order listing expired"
+      );
 
       // Verify the fee and collateral are not 0
       require(makerOrder.fee > 0, "Order: fee cannot be 0");
       require(makerOrder.collateral > 0, "Order: collateral cannot be 0");
 
-      // bytes32 askHash = makerAsk.hash();
-      // _validateOrder(makerAsk, askHash);
       // Verify the validity of the signature
       require(
           SignatureChecker.verify(
