@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.16;
 
 // OZ libraries
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -11,8 +11,7 @@ import {OrderTypes} from "./libraries/OrderTypes.sol";
 import {SignatureChecker} from "./libraries/SignatureChecker.sol";
 
 /**
- * @notice The Dyve Contract to handle short Selling of NFTs.
- * @dev implements the IERC721Receiver so we can use the safeTransferFrom mechanism.
+ * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is ReentrancyGuard, Ownable {
   using OrderTypes for OrderTypes.MakerOrder;
@@ -144,6 +143,7 @@ contract Dyve is ReentrancyGuard, Ownable {
       payable
       nonReentrant
   {
+    require(msg.value >= makerAsk.fee + makerAsk.collateral + ((makerAsk.fee * 2) / 100), "Order: Insufficient amount sent to Dyve");
     require((makerAsk.isOrderAsk) && (!takerBid.isOrderAsk), "Order: Wrong sides");
     require(msg.sender == takerBid.taker, "Order: Taker must be the sender");
 
@@ -151,8 +151,10 @@ contract Dyve is ReentrancyGuard, Ownable {
     bytes32 askHash = makerAsk.hash();
     _validateOrder(makerAsk, askHash);
 
-    _isUserOrderNonceExecutedOrCancelled[msg.sender][makerAsk.nonce] = true;
+    // Update the nonce to prevent replay attacks
+    _isUserOrderNonceExecutedOrCancelled[makerAsk.signer][makerAsk.nonce] = true;
 
+    // create order for future processing (ie: closing and claiming)
     orders[askHash] = Order({
       orderHash: askHash,
       lender: payable(makerAsk.signer),
@@ -164,8 +166,10 @@ contract Dyve is ReentrancyGuard, Ownable {
       status: ListingStatus.BORROWED
     });
 
+    // Transfer protocol fee to protocolFeeRecipient, lender fee to lender and collateral to this contract
     _transferFeesAndFunds(makerAsk.signer, takerBid.fee);
 
+    // Transfer NFT to borrower
     IERC721(makerAsk.collection).safeTransferFrom(makerAsk.signer, takerBid.taker, makerAsk.tokenId);
 
     emit TakerBid(
@@ -192,8 +196,8 @@ contract Dyve is ReentrancyGuard, Ownable {
   function closePosition(bytes32 orderHash, uint256 returnTokenId) external {
     Order storage order = orders[orderHash];
 
-    require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning NFT");
     require(order.borrower == msg.sender, "Order: Borrower must be the sender");
+    require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning ERC721 token");
     require(order.expiryDateTime > block.timestamp, "Order: Order expired");
     require(order.status == ListingStatus.BORROWED, "Order: Order is not borrowed");
 
@@ -203,7 +207,7 @@ contract Dyve is ReentrancyGuard, Ownable {
     IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
 
     // 2. Transfer the collateral from the escrow account to the borrower
-    require(address(this).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+    require(address(this).balance >= order.collateral, "Order: insufficient contract funds!");
 
     (bool ok,) = payable(order.borrower).call{value: order.collateral}("");
     require(ok, "Order: transfer of collateral from Dyve to borrower failed!");
@@ -234,7 +238,7 @@ contract Dyve is ReentrancyGuard, Ownable {
     order.status = ListingStatus.EXPIRED;
 
     // 2. Transfer the collateral from the escrow account to the borrower
-    require(address(this).balance >= order.collateral, "Order: insufficient escrow contract funds!");
+    require(address(this).balance >= order.collateral, "Order: insufficient contract funds!");
 
     (bool ok,) = payable(order.lender).call{value: order.collateral}("");
     require(ok, "Order: transfer of collateral from Dyve to lender failed!");
@@ -281,6 +285,8 @@ contract Dyve is ReentrancyGuard, Ownable {
   function _validateOrder(OrderTypes.MakerOrder calldata makerOrder, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
       require(makerOrder.signer != address(0), "Order: Invalid signer");
+
+      // Verify whether the nonce has expired
       require(
         (!_isUserOrderNonceExecutedOrCancelled[makerOrder.signer][makerOrder.nonce]) &&
           (makerOrder.nonce >= userMinOrderNonce[makerOrder.signer]),

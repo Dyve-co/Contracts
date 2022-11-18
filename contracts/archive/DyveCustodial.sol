@@ -6,8 +6,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 // Dyve Interfaces
-import "./interfaces/IERC721.sol";
-import "./interfaces/IEscrow.sol";
+import "../interfaces/IERC721.sol";
+import "./IEscrow.sol";
 
 /**
  * @notice The Dyve Contract to handle short Selling of NFTs.
