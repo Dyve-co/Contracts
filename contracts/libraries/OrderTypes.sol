@@ -6,8 +6,8 @@ pragma solidity ^0.8.16;
  * @notice This library contains order types for Dyve
  */
 library OrderTypes {
-    // keccak256("MakerOrder(bool isOrderAsk,address signer,address collection,uint256 tokenId,uint256 duration,uint256 collateral,uint256 fee,uint256 nonce,uint256 startTime,uint256 endTime)")
-    bytes32 internal constant MAKER_ORDER_HASH = 0xdc2ec73446e2f2be13384f113009c234f3c341a7706ebec11889644c41ad74d3;
+    // keccak256("MakerOrder(bool isOrderAsk,address signer,address collection,uint256 tokenId,uint256 duration,uint256 collateral,uint256 fee,address currency,uint256 nonce,uint256 startTime,uint256 endTime)")
+    bytes32 internal constant MAKER_ORDER_HASH = 0x9458fb7fdd96a965c8bdbb8fb8cc611e387f3f63b805c214d55ea06b1d31ea88;
 
     struct MakerOrder {
         bool isOrderAsk; // true --> ask / false --> bid
@@ -19,7 +19,7 @@ library OrderTypes {
         // uint256 baseCollateral; // minimum amount of collateral (used as )
         // uint256 collateralMultiplier; // collateral as a multiple of collection floor price (used as)
         uint256 fee; // fee for the lender
-        // address currency; // currency (e.g., WETH)
+        address currency; // currency (e.g., WETH)
         uint256 nonce; // order nonce (must be unique unless new maker order is meant to override existing one e.g., lower ask price)
         uint256 startTime; // startTime in timestamp
         uint256 endTime; // endTime in timestamp
@@ -50,6 +50,7 @@ library OrderTypes {
                     // makerOrder.baseCollateral,
                     // makerOrder.collateralMultiplier,
                     makerOrder.fee,
+                    makerOrder.currency,
                     makerOrder.nonce,
                     makerOrder.startTime,
                     makerOrder.endTime
