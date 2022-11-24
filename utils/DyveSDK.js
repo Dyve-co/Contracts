@@ -82,7 +82,6 @@ class DyveSDK {
       status: 'LISTED',
       startTime: Math.floor(Date.now() / 1000),
       endTime: Math.floor(Date.now() / 1000) + 1209600,
-      // nonce, TODO: manage nonces on-chain
     }
     console.log("data: ", data)
 

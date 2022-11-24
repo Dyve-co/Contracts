@@ -202,7 +202,6 @@ describe("Dyve", function () {
       .to.be.rejectedWith("Order: Matching order listing expired")
   })
 
-
   it("consumes maker ask (listing) with taker bid using USDC", async () => {
     const data = {
       isOrderAsk: true,
