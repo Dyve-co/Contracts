@@ -67,7 +67,7 @@ const generateSignature = async (data, signer, contract) => {
 const computeOrderHash = (order) => {
   const types = [
     "bytes32",
-    "bool",
+    "uint256",
     "address",
     "address",
     "uint256",
@@ -81,8 +81,8 @@ const computeOrderHash = (order) => {
   ]
 
   const values = [
-    "0x9458fb7fdd96a965c8bdbb8fb8cc611e387f3f63b805c214d55ea06b1d31ea88",
-    order.isOrderAsk,
+    "0x4cd010be0f33bfd9fd3bf5d095bfb8e3de601db29d12cfbc8c018018cb1bf4fc",
+    order.orderType,
     order.signer,
     order.collection,
     order.tokenId,

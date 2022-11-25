@@ -1,6 +1,6 @@
 module.exports = {
-  MakerOrder: [
-    { name: "isOrderAsk", type: "bool" },
+  Order: [
+    { name: "orderType", type: "uint256" },
     { name: "signer", type: "address" },
     { name: "collection", type: "address" },
     { name: "tokenId", type: "uint256" },
