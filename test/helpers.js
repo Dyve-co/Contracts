@@ -1,6 +1,6 @@
 const { ethers } = require('hardhat')
 const { constants } = require('ethers')
-const types = require("../utils/types")
+const types = require("./types")
 const { keccak256, defaultAbiCoder, parseEther } = ethers.utils;
 
 const setup = async (protocolFeeRecipient) => {
