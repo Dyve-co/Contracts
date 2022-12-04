@@ -11,7 +11,6 @@ import {IWETH} from "./interfaces/IWETH.sol";
 // Dyve Interfaces
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 import {SignatureChecker} from "./libraries/SignatureChecker.sol";
-import "hardhat/console.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
@@ -20,7 +19,6 @@ contract Dyve is ReentrancyGuard, Ownable {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
 
-  address public immutable WETH;
   bytes32 public immutable DOMAIN_SEPARATOR;
 
   address public protocolFeeRecipient;
@@ -58,7 +56,7 @@ contract Dyve is ReentrancyGuard, Ownable {
   event OrderFulfilled(
     bytes32 orderHash, // ask hash of the maker order
     OrderType orderType,
-    uint256 orderNonce, // user order nonce
+    uint256 orderNonce,
     address indexed taker,
     address indexed maker,
     address collection,
@@ -98,10 +96,9 @@ contract Dyve is ReentrancyGuard, Ownable {
 
   /**
     * @notice Constructor
-    * @param _WETH wrapped ether address (for other chains, use wrapped native asset)
     * @param _protocolFeeRecipient protocol fee recipient
     */
-  constructor(address _WETH, address _protocolFeeRecipient) {
+  constructor(address _protocolFeeRecipient) {
     DOMAIN_SEPARATOR = keccak256(
       abi.encode(
         0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f, // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
@@ -112,7 +109,6 @@ contract Dyve is ReentrancyGuard, Ownable {
       )
     );
 
-    WETH = _WETH;
     protocolFeeRecipient = _protocolFeeRecipient;
   }
 
@@ -162,7 +158,7 @@ contract Dyve is ReentrancyGuard, Ownable {
     // Update maker ask order status to true (prevents replay)
     _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
 
-    // Follows the follwing procedure:
+    // Goes through the follwing procedure:
     // 1. Creates an order
     // 2. transfers the NFT to the borrower
     // 3. transfers the funds from the borrower to the respecitve recipients

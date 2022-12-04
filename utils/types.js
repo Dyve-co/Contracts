@@ -9,7 +9,5 @@ module.exports = {
     { name: "fee", type: "uint256" },
     { name: "currency", type: "address" },
     { name: "nonce", type: "uint256" },
-    { name: "startTime", type: "uint256" },
-    { name: "endTime", type: "uint256" },
   ]
 }

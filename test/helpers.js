@@ -17,7 +17,7 @@ const setup = async (protocolFeeRecipient) => {
   await mockUSDC.deployed();
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(weth.address, protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(protocolFeeRecipient.address);
   await dyve.deployed();
 
   return [lender, weth, mockUSDC, dyve];
@@ -76,12 +76,10 @@ const computeOrderHash = (order) => {
     "uint256",
     "address",
     "uint256",
-    "uint256",
-    "uint256",
   ]
 
   const values = [
-    "0x4cd010be0f33bfd9fd3bf5d095bfb8e3de601db29d12cfbc8c018018cb1bf4fc",
+    "0xc74a4fd22fe479a9c093c0292447e36aa545fdb509945a0bea84d6c6a626c680",
     order.orderType,
     order.signer,
     order.collection,
@@ -91,8 +89,6 @@ const computeOrderHash = (order) => {
     order.fee,
     order.currency,
     order.nonce,
-    order.startTime,
-    order.endTime,
   ]
 
   return keccak256(defaultAbiCoder.encode(types, values));

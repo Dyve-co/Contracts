@@ -44,7 +44,6 @@ describe("Dyve", function () {
 
     await expect(dyve.DOMAIN_SEPARATOR()).to.eventually.equal(DOMAIN_SEPARATOR)
     await expect(dyve.protocolFeeRecipient()).to.eventually.equal(protocolFeeRecipient.address)
-    await expect(dyve.WETH()).to.eventually.equal(weth.address)
   })
 
   it("adds and removes USDC as a whitelisted currency", async () => {
@@ -72,8 +71,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -136,8 +133,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: mockUSDC.address,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -204,8 +199,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: mockUSDC.address,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, addr1, dyve)
@@ -272,8 +265,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -333,8 +324,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -383,8 +372,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: mockUSDC.address,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -435,8 +422,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -477,8 +462,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -526,8 +509,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: mockUSDC.address,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -583,8 +564,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -629,8 +608,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)
@@ -670,8 +647,6 @@ describe("Dyve", function () {
       fee: ethers.utils.parseEther("0.1").toString(),
       currency: ethers.constants.AddressZero,
       nonce: 100,
-      startTime: Math.floor(Date.now() / 1000),
-      endTime: Math.floor(Date.now() / 1000) + 86400,
     }
 
     const signature = await generateSignature(data, owner, dyve)

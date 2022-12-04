@@ -8,10 +8,14 @@ const addresses = {
 
 async function main() {
   const Dyve = await hre.ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(addresses.WETH, addresses.FEE_RECIPIENT);
+  const dyve = await Dyve.deploy(addresses.FEE_RECIPIENT);
   const tx = await dyve.deployTransaction.wait();
   console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);
+
+  const addWETHWhitelistTx = await dyve.addWhitelistedCurrency(addresses.WETH)
+  await addWETHWhitelistTx.wait()
+  console.log("WETH added to whitelist")
 
   const addUSDCWhitelistTx = await dyve.addWhitelistedCurrency(addresses.USDC)
   await addUSDCWhitelistTx.wait()
