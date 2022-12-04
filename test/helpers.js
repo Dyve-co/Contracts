@@ -57,11 +57,11 @@ const generateSignature = async (data, signer, contract) => {
   }
   const signature = (await signer._signTypedData(domain, types, data)).substring(2)
 
-  const r = "0x" + signature.slice(0, 64)
-  const s = "0x" + signature.slice(64, 128)
-  const v = parseInt(signature.slice(128, 130), 16)
+  // const r = "0x" + signature.slice(0, 64)
+  // const s = "0x" + signature.slice(64, 128)
+  // const v = parseInt(signature.slice(128, 130), 16)
 
-  return { v, r, s }
+  return "0x" + signature
 }
 
 const computeOrderHash = (order) => {

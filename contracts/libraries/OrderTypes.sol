@@ -31,9 +31,7 @@ library OrderTypes {
         uint256 fee; // fee for the lender
         address currency; // currency (e.g., WETH)
         uint256 nonce; // order nonce (must be unique unless new maker order is meant to override existing one e.g., lower ask price)
-        uint8 v; // v: parameter (27 or 28)
-        bytes32 r; // r: parameter
-        bytes32 s; // s: parameter
+        bytes signature; // signature of the maker order
     }
 
     function hash(Order memory order) internal pure returns (bytes32) {

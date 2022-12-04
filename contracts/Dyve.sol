@@ -6,20 +6,23 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IWETH} from "./interfaces/IWETH.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 // Dyve Interfaces
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
-import {SignatureChecker} from "./libraries/SignatureChecker.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
-contract Dyve is ReentrancyGuard, Ownable {
+contract Dyve is 
+  ReentrancyGuard,
+  Ownable,
+  EIP712("Dyve", "1")
+{
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
-
-  bytes32 public immutable DOMAIN_SEPARATOR;
 
   address public protocolFeeRecipient;
 
@@ -99,16 +102,6 @@ contract Dyve is ReentrancyGuard, Ownable {
     * @param _protocolFeeRecipient protocol fee recipient
     */
   constructor(address _protocolFeeRecipient) {
-    DOMAIN_SEPARATOR = keccak256(
-      abi.encode(
-        0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f, // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-        0x5ba1c976ab8ccf6a5989edf209a623864756135194c073f47cac79e46eff2be3, // keccak256("Dyve")
-        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6, // keccak256(bytes("1")) for versionId = 1
-        block.chainid,
-        address(this)
-      )
-    );
-
     protocolFeeRecipient = _protocolFeeRecipient;
   }
 
@@ -153,7 +146,7 @@ contract Dyve is ReentrancyGuard, Ownable {
 
     // Check the maker ask order
     bytes32 orderHash = order.hash();
-    _validateOrder(order, orderHash);
+    _validateOrder(order, _hashTypedDataV4(orderHash));
 
     // Update maker ask order status to true (prevents replay)
     _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
@@ -358,6 +351,13 @@ contract Dyve is ReentrancyGuard, Ownable {
   }
 
   /**
+  * @notice Returns the domain separator for the current chain (EIP-712)
+  */
+  function DOMAIN_SEPARATOR() external view returns(bytes32) {
+      return _domainSeparatorV4();
+  }
+
+  /**
   * @notice Verify the validity of the maker order
   * @param order the order to be verified
   * @param orderHash computed hash for the order
@@ -382,13 +382,10 @@ contract Dyve is ReentrancyGuard, Ownable {
 
       // Verify the validity of the signature
       require(
-          SignatureChecker.verify(
-              orderHash,
+          SignatureChecker.isValidSignatureNow(
               order.signer,
-              order.v,
-              order.r,
-              order.s,
-              DOMAIN_SEPARATOR
+              orderHash,
+              order.signature
           ),
           "Signature: Invalid"
       );

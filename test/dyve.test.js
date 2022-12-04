@@ -74,7 +74,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1").toString() })
     await borrowTx.wait()
@@ -136,7 +136,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const addCurrencyTx = await dyve.addWhitelistedCurrency(mockUSDC.address)
     await addCurrencyTx.wait()
@@ -202,7 +202,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, addr1, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const addCurrencyTx = await dyve.addWhitelistedCurrency(mockUSDC.address)
     await addCurrencyTx.wait()
@@ -253,7 +253,6 @@ describe("Dyve", function () {
       .to.be.rejectedWith("Order: Matching order listing expired")
   })
 
-  
   it("checks validation for fulfillOrder", async () => {
     const data = {
       orderType: 0,
@@ -268,7 +267,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const totalAmount = ethers.utils.parseEther("1.1");
 
@@ -297,18 +296,8 @@ describe("Dyve", function () {
     await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, { value: ethers.utils.parseEther("0.1") }))
       .to.be.rejectedWith("Order: collateral cannot be 0")
 
-    // invalid v parameter
-    const invalidVSignatureMaker = { ...makerOrder, v: 1 }
-    await expect(dyve.connect(addr1).fulfillOrder(invalidVSignatureMaker, { value: totalAmount }))
-      .to.be.rejectedWith("Signature: Invalid v parameter")
-
-    // invalid signature signer
-    const invalidSignerMaker = { ...makerOrder, s: ethers.constants.HashZero }
-    await expect(dyve.connect(addr1).fulfillOrder(invalidSignerMaker, { value: totalAmount }))
-      .to.be.rejectedWith("Signature: Invalid signer")
-
     // invalid signature
-    const invalidSignatureMaker = { ...makerOrder, s: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
+    const invalidSignatureMaker = { ...makerOrder, signature: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
     await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, { value: totalAmount }))
       .to.be.rejectedWith("Signature: Invalid")
   })
@@ -327,7 +316,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const totalAmount = ethers.utils.parseEther("1.1").toString();
     const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
@@ -375,7 +364,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const whitelistTx = await dyve.addWhitelistedCurrency(mockUSDC.address)
     await whitelistTx.wait();
@@ -425,7 +414,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const totalAmount = ethers.utils.parseEther("1.1").toString();
     const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
@@ -465,7 +454,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") })
     await borrowTx.wait();
@@ -512,7 +501,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const whitelistTx = await dyve.addWhitelistedCurrency(mockUSDC.address)
     await whitelistTx.wait()
@@ -567,7 +556,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const totalAmount = ethers.utils.parseEther("1.1").toString();
     const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
@@ -611,7 +600,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const totalAmount = ethers.utils.parseEther("1.1").toString();
     await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount }))
@@ -650,7 +639,7 @@ describe("Dyve", function () {
     }
 
     const signature = await generateSignature(data, owner, dyve)
-    const makerOrder = { ...data, ...signature }
+    const makerOrder = { ...data, signature }
 
     const totalAmount = ethers.utils.parseEther("1.1").toString();
     await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount }))
