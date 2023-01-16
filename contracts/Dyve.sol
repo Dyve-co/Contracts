@@ -11,6 +11,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 
 // Dyve Interfaces
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
+import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
 /**
@@ -23,6 +24,7 @@ contract Dyve is
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
+  using ReservoirOracle for ReservoirOracle.Message;
 
   address public protocolFeeRecipient;
 
@@ -139,7 +141,7 @@ contract Dyve is
   * @notice Fullfills the order
   * @param order the order to be fulfilled
   */
-  function fulfillOrder(OrderTypes.Order calldata order)
+  function fulfillOrder(OrderTypes.Order calldata order) // ReservoirOracle.Message calldata message
       external
       payable
       nonReentrant
@@ -149,7 +151,7 @@ contract Dyve is
 
     // Check the maker ask order
     bytes32 orderHash = order.hash();
-    _validateOrder(order, _hashTypedDataV4(orderHash));
+    _validateOrder(order, _hashTypedDataV4(orderHash)); // message
 
     // Update maker ask order status to true (prevents replay)
     _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
@@ -421,7 +423,7 @@ contract Dyve is
   * @param order the order to be verified
   * @param orderHash computed hash for the order
   */
-  function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
+  function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view { // ReservoirOracle.Message calldata message
       // Verify the signer is not address(0)
       require(order.signer != address(0), "Order: Invalid signer");
 
@@ -441,6 +443,12 @@ contract Dyve is
 
       // Verify that the currency is whitelisted
       require(order.orderType == OrderType.ETH_TO_ERC721 || isCurrencyWhitelisted[order.currency], "Order: currency not whitelisted");
+
+      // Verify that the NFT is not flagged as stolen
+      // uint256 maxMessageAge = 5 minutes;
+      // if (!ReservoirOracle._verifyMessage(message.id, maxMessageAge, message)) {
+      //     revert ReservoirOracle.InvalidMessage();
+      // }
 
       // Verify the validity of the signature
       require(
