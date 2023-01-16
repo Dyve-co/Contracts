@@ -16,14 +16,18 @@ const setup = async (protocolFeeRecipient) => {
   const mockUSDC = await MockERC20.deploy("USDC", "USDC");
   await mockUSDC.deployed();
 
+  const MockERC721 = await ethers.getContractFactory("MockERC721");
+  const mockERC721 = await MockERC721.deploy();
+  await mockERC721.deployed();
+
   const Dyve = await ethers.getContractFactory("Dyve");
   const dyve = await Dyve.deploy(protocolFeeRecipient.address);
   await dyve.deployed();
 
-  return [lender, weth, mockUSDC, dyve];
+  return [lender, weth, mockUSDC, mockERC721, dyve];
 } 
 
-const tokenSetup = async (users, weth, mockERC20, mockERC721, dyve) => {
+const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, dyve) => {
   for (const user of users) {
     // Each user gets 30 WETH
     await weth.connect(user).deposit({ value: parseEther("30") });
@@ -38,13 +42,16 @@ const tokenSetup = async (users, weth, mockERC20, mockERC721, dyve) => {
     await mockERC20.connect(user).approve(dyve.address, constants.MaxUint256);
 
     // Each user mints 1 ERC721 NFT
-    await mockERC721.connect(user).mint();
+    await lender.connect(user).mint();
 
     // Set approval for all tokens in mock collection to transferManager contract for ERC721
-    await mockERC721.connect(user).setApprovalForAll(dyve.address, true);
+    await lender.connect(user).setApprovalForAll(dyve.address, true);
 
     // Add WETH to currency whitelist
     await dyve.addWhitelistedCurrency(weth.address);
+
+    // Add premium mock ERC721 to collection whitelist
+    await dyve.addPremiumCollection(mockERC721.address, 1);
   }
 }
 
@@ -76,10 +83,12 @@ const computeOrderHash = (order) => {
     "uint256",
     "address",
     "uint256",
+    "uint256",
+    "uint256",
   ]
 
   const values = [
-    "0xc74a4fd22fe479a9c093c0292447e36aa545fdb509945a0bea84d6c6a626c680",
+    "0x4cd010be0f33bfd9fd3bf5d095bfb8e3de601db29d12cfbc8c018018cb1bf4fc",
     order.orderType,
     order.signer,
     order.collection,
@@ -89,6 +98,8 @@ const computeOrderHash = (order) => {
     order.fee,
     order.currency,
     order.nonce,
+    order.startTime,
+    order.endTime,
   ]
 
   return keccak256(defaultAbiCoder.encode(types, values));

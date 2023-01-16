@@ -1,6 +1,10 @@
 require('dotenv').config()
 require("@nomicfoundation/hardhat-toolbox");
 require("solidity-coverage");
+require("hardhat-gas-reporter");
+
+// Gas estimation calculation
+// (gas units) * (gas price per unit) = gas fee in gwei
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -14,6 +18,9 @@ module.exports = {
   },
   paths: {
     artifacts: './artifacts'
+  },
+  gasReporter: {
+    enabled: true
   },
   networks: {
     rinkeby: {

@@ -26,6 +26,7 @@ contract Dyve is
 
   address public protocolFeeRecipient;
 
+  mapping(address => uint256) public premiumCollections;
   mapping(address => bool) public isCurrencyWhitelisted;
   mapping(address => uint256) public userMinOrderNonce;
   mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
@@ -51,8 +52,10 @@ contract Dyve is
     OrderStatus status;
   }
 
-  event addCurrencyWhitelist(address indexed currency);
-  event removeCurrencyWhitelist(address indexed currency);
+  event AddCurrencyToWhitelist(address indexed currency);
+  event RemoveCurrencyFromWhitelist(address indexed currency);
+  event AddPremiumCollection(address indexed collection, uint256 reducedFeeRate);
+  event RemovePremiumCollection(address indexed collection);
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
 
@@ -160,19 +163,19 @@ contract Dyve is
 
       IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
 
-      _transferETH(order.signer, order.fee);
+      _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
     } else if (order.orderType == OrderType.ERC20_TO_ERC721) {
       _createOrder(order, orderHash, order.signer, msg.sender);
 
       IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
 
-      _transferERC20(msg.sender, order.signer, order.fee, order.collateral, order.currency);
+      _transferERC20(msg.sender, order.signer, order.fee, order.collateral, order.currency, order.premiumCollection, order.premiumTokenId); 
     } else if (order.orderType == OrderType.ERC721_TO_ERC20) {
       _createOrder(order, orderHash, msg.sender, order.signer);
 
       IERC721(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId);
 
-      _transferERC20(order.signer, msg.sender, order.fee, order.collateral, order.currency);
+      _transferERC20(order.signer, msg.sender, order.fee, order.collateral, order.currency, order.premiumCollection, order.premiumTokenId); 
     }
 
     emit OrderFulfilled(
@@ -292,12 +295,37 @@ contract Dyve is
   }
 
   /** 
+  * @notice Determines the protocol fee to charge based on whether the lender owns an NFT from a premium collection
+  * @dev If the rate is set to 1, apply no fee
+  * @param fee Fee amount being transffered to Lender
+  * @param collection Collection address of one of the potential premium collections
+  * @param tokenId from one of the potential premium collections
+  * @param lender Address of the lender
+  */
+  function _determineProtocolFee(uint256 fee, address collection, uint256 tokenId, address lender) internal view returns (uint256) {
+    uint256 protocolRate = 250;
+
+    // initial check of collection != address(0) should be more gas efficient than checking the mapping
+    if (collection != address(0) && premiumCollections[collection] > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
+      if (premiumCollections[collection] == 1) {
+        protocolRate = 0;
+      } else {
+        protocolRate = premiumCollections[collection];
+      }
+    }
+
+    return (fee * protocolRate) / 10000;
+  }
+
+  /** 
   * @notice Transfer fees and protocol fee to the Lender and procotol fee recipient respectively in ETH
   * @param to Address of recipient to receive the fees (Lender)
   * @param fee Fee amount being transffered to Lender
+  * @param premiumCollection Address of the premium collection (Zero address if it doesn't exist)
+  * @param premiumTokenId TokenId from the premium collection
   */
-  function _transferETH(address to, uint256 fee) internal {
-    uint256 protocolFee = (fee * 2) / 100;
+  function _transferETH(address to, uint256 fee, address premiumCollection, uint256 premiumTokenId) internal {
+    uint256 protocolFee = _determineProtocolFee(fee, premiumCollection, premiumTokenId, to);
     bool success;
 
     // 1. Protocol fee transfer
@@ -316,9 +344,19 @@ contract Dyve is
   * @param fee Fee amount being transffered to Lender
   * @param collateral Collateral amount being transffered to Dyve
   * @param currency Address of the ERC20 currency
+  * @param premiumCollection Address of the premium collection (Zero address if it doesn't exist)
+  * @param premiumTokenId TokenId from the premium collection
   */
-  function _transferERC20(address from, address to, uint256 fee, uint256 collateral, address currency) internal {
-    uint256 protocolFee = (fee * 2) / 100;
+  function _transferERC20(
+    address from, 
+    address to, 
+    uint256 fee, 
+    uint256 collateral, 
+    address currency,
+    address premiumCollection,
+    uint256 premiumTokenId
+  ) internal {
+    uint256 protocolFee = _determineProtocolFee(fee, premiumCollection, premiumTokenId, to);
 
    // 1. Protocol fee transfer
     IERC20(currency).safeTransferFrom(from, protocolFeeRecipient, protocolFee);
@@ -336,8 +374,8 @@ contract Dyve is
   */
   function addWhitelistedCurrency(address currency) external onlyOwner {
     isCurrencyWhitelisted[currency] = true;
-    
-    emit addCurrencyWhitelist(currency);
+ 
+    emit AddCurrencyToWhitelist(currency);
   }
 
   /**
@@ -347,7 +385,28 @@ contract Dyve is
   function removeWhitelistedCurrency(address currency) external onlyOwner {
     isCurrencyWhitelisted[currency] = false;
     
-    emit removeCurrencyWhitelist(currency);
+    emit RemoveCurrencyFromWhitelist(currency);
+  }
+
+  /**
+  * @notice adds the specified currency to the list of supported currencies
+  * @param collection the address of the collection to be added
+  * @param reducedFeeRate the reduced fee rate to be applied for lenders who hold an NFT from this collection
+  */
+  function addPremiumCollection(address collection, uint256 reducedFeeRate) external onlyOwner {
+    premiumCollections[collection] = reducedFeeRate;
+    
+    emit AddPremiumCollection(collection, reducedFeeRate);
+  }
+
+  /**
+  * @notice removes the specified currency from the list of supported currencies
+  * @param collection the address of the collection to be removed
+  */
+  function removePremiumCollection(address collection) external onlyOwner {
+    premiumCollections[collection] = 0;
+    
+    emit RemovePremiumCollection(collection);
   }
 
   /**
@@ -365,6 +424,9 @@ contract Dyve is
   function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
       require(order.signer != address(0), "Order: Invalid signer");
+
+      // Verify the order listing is not expired
+      require(order.endTime > block.timestamp, "Order: Order listing expired");
 
       // Verify whether the nonce has expired
       require(

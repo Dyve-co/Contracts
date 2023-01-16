@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
-
 enum OrderType {
     ETH_TO_ERC721,
     ETH_TO_ERC1155,
@@ -18,8 +17,8 @@ enum OrderType {
  * @notice This library contains order types for Dyve
  */
 library OrderTypes {
-    // keccak256("Order(uint256 orderType,address signer,address collection,uint256 tokenId,uint256 duration,uint256 collateral,uint256 fee,address currency,uint256 nonce)")
-    bytes32 internal constant ORDER_HASH = 0xc74a4fd22fe479a9c093c0292447e36aa545fdb509945a0bea84d6c6a626c680;
+    // keccak256("Order(uint256 orderType,address signer,address collection,uint256 tokenId,uint256 duration,uint256 collateral,uint256 fee,address currency,uint256 nonce,uint256 startTime,uint256 endTime)")
+    bytes32 internal constant ORDER_HASH = 0x4cd010be0f33bfd9fd3bf5d095bfb8e3de601db29d12cfbc8c018018cb1bf4fc;
 
     struct Order {
         OrderType orderType; // the type of order
@@ -30,7 +29,11 @@ library OrderTypes {
         uint256 collateral; // collateral amount
         uint256 fee; // fee for the lender
         address currency; // currency (e.g., WETH)
+        address premiumCollection; // premium collection address
+        uint256 premiumTokenId; // premium token id
         uint256 nonce; // order nonce (must be unique unless new maker order is meant to override existing one e.g., lower ask price)
+        uint256 startTime; // time when the order was created in epoch seconds
+        uint256 endTime; // time when the order expires in epoch seconds
         bytes signature; // signature of the maker order
     }
 
@@ -47,7 +50,9 @@ library OrderTypes {
                     order.collateral,
                     order.fee,
                     order.currency,
-                    order.nonce
+                    order.nonce,
+                    order.startTime,
+                    order.endTime
                 )
             );
     }
