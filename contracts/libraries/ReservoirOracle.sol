@@ -36,12 +36,12 @@ library ReservoirOracle {
         }
 
         // Ensure the message timestamp is valid
-        // if (
-        //     message.timestamp > block.timestamp ||
-        //     message.timestamp + validFor < block.timestamp
-        // ) {
-        //     return false;
-        // }
+        if (
+            message.timestamp > block.timestamp ||
+            message.timestamp + validFor < block.timestamp
+        ) {
+            return false;
+        }
 
         bytes32 r;
         bytes32 s;

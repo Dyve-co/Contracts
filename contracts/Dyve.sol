@@ -299,13 +299,13 @@ contract Dyve is
   /** 
   * @notice Determines the protocol fee to charge based on whether the lender owns an NFT from a premium collection
   * @dev If the rate is set to 1, apply no fee
-  * @param fee Fee amount being transffered to Lender
+  * @param collateral collateral amount being transffered to the Dyve
   * @param collection Collection address of one of the potential premium collections
   * @param tokenId from one of the potential premium collections
   * @param lender Address of the lender
   */
-  function _determineProtocolFee(uint256 fee, address collection, uint256 tokenId, address lender) internal view returns (uint256) {
-    uint256 protocolRate = 250;
+  function _determineProtocolFee(uint256 collateral, address collection, uint256 tokenId, address lender) internal view returns (uint256) {
+    uint256 protocolRate = 200;
 
     // initial check of collection != address(0) should be more gas efficient than checking the mapping
     if (collection != address(0) && premiumCollections[collection] > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
@@ -316,7 +316,7 @@ contract Dyve is
       }
     }
 
-    return (fee * protocolRate) / 10000;
+    return (collateral * protocolRate) / 10000;
   }
 
   /** 
@@ -335,7 +335,7 @@ contract Dyve is
     require(success, "Order: Protocol fee transfer failed");
 
     // 2. Lender fee transfer
-    (success, ) = payable(to).call{ value: fee - protocolFee }("");
+    (success, ) = payable(to).call{ value: fee }("");
     require(success, "Order: Lender fee transfer failed");
   }
 
@@ -364,7 +364,7 @@ contract Dyve is
     IERC20(currency).safeTransferFrom(from, protocolFeeRecipient, protocolFee);
 
     // 2. Lender fee transfer
-    IERC20(currency).safeTransferFrom(from, to, fee - protocolFee);
+    IERC20(currency).safeTransferFrom(from, to, fee);
 
     // 3. Collateral transfer
     IERC20(currency).safeTransferFrom(from, address(this), collateral);

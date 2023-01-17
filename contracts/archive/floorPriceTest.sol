@@ -18,6 +18,6 @@ contract Oracle {
             revert ReservoirOracle.InvalidMessage();
         }
 
-        (address messageCurrency, uint256 messagePrice) = abi.decode(message.payload, (address, uint256)); 
+        // (address messageCurrency, uint256 messagePrice) = abi.decode(message.payload, (address, uint256)); 
     }
 }
