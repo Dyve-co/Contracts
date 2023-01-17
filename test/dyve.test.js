@@ -95,7 +95,12 @@ describe("Dyve", function () {
     const signature = await generateSignature(data, owner, dyve)
     const makerOrder = { ...data, signature }
 
-    const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1").toString() })
+    const protocolFee = ethers.BigNumber.from(data.collateral).mul(2).div(100)
+    const totalFunds = ethers.BigNumber.from(data.collateral)
+      .add(ethers.BigNumber.from(data.fee))
+      .add(protocolFee)
+      .toString()
+    const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalFunds })
     await borrowTx.wait()
 
     const makerOrderHash = computeOrderHash(data)
@@ -105,9 +110,9 @@ describe("Dyve", function () {
 
     expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
     await expect(() => borrowTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("1"));
-    await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther(String(0.1 * 0.975)));
-    await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther(String(0.1 * 0.025)));
-    await expect(() => borrowTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("-1.1"));
+    await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther(String(0.1)));
+    await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther(String(1 * 0.02)));
+    await expect(() => borrowTx).to.changeEtherBalance(addr1, `-${totalFunds}`)
 
     expect(order.orderHash).to.equal(order.orderHash);
     expect(order.lender).to.equal(data.signer);
@@ -137,7 +142,7 @@ describe("Dyve", function () {
       order.status,
     )
 
-    await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") }))
+    await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalFunds }))
       .to.be.rejectedWith("Order: Matching order listing expired")
   })
 

@@ -13,6 +13,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
+import "hardhat/console.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
@@ -146,7 +147,7 @@ contract Dyve is
       payable
       nonReentrant
   {
-    require(order.orderType != OrderType.ETH_TO_ERC721 || msg.value == (order.fee + order.collateral), "Order: Incorrect amount of ETH sent");
+    require(order.orderType != OrderType.ETH_TO_ERC721 || msg.value == (order.fee + order.collateral + ((order.collateral * 200) / 10000)), "Order: Incorrect amount of ETH sent");
     require(order.orderType == OrderType.ETH_TO_ERC721 || msg.value == 0, "Order: ETH sent for an ERC20 type transaction");
 
     // Check the maker ask order
@@ -165,7 +166,7 @@ contract Dyve is
 
       IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
 
-      _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
+      _transferETH(order.signer, order.fee, order.collateral, order.premiumCollection, order.premiumTokenId);
     } else if (order.orderType == OrderType.ERC20_TO_ERC721) {
       _createOrder(order, orderHash, order.signer, msg.sender);
 
@@ -323,11 +324,12 @@ contract Dyve is
   * @notice Transfer fees and protocol fee to the Lender and procotol fee recipient respectively in ETH
   * @param to Address of recipient to receive the fees (Lender)
   * @param fee Fee amount being transffered to Lender
+  * @param collateral collateral amount being transffered to Dyve
   * @param premiumCollection Address of the premium collection (Zero address if it doesn't exist)
   * @param premiumTokenId TokenId from the premium collection
   */
-  function _transferETH(address to, uint256 fee, address premiumCollection, uint256 premiumTokenId) internal {
-    uint256 protocolFee = _determineProtocolFee(fee, premiumCollection, premiumTokenId, to);
+  function _transferETH(address to, uint256 fee, uint256 collateral, address premiumCollection, uint256 premiumTokenId) internal {
+    uint256 protocolFee = _determineProtocolFee(collateral, premiumCollection, premiumTokenId, to);
     bool success;
 
     // 1. Protocol fee transfer
@@ -358,7 +360,7 @@ contract Dyve is
     address premiumCollection,
     uint256 premiumTokenId
   ) internal {
-    uint256 protocolFee = _determineProtocolFee(fee, premiumCollection, premiumTokenId, to);
+    uint256 protocolFee = _determineProtocolFee(collateral, premiumCollection, premiumTokenId, to);
 
    // 1. Protocol fee transfer
     IERC20(currency).safeTransferFrom(from, protocolFeeRecipient, protocolFee);
