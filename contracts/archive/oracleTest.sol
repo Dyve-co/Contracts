@@ -14,7 +14,7 @@ contract Oracle {
     function checkMessage(ReservoirOracle.Message calldata message) external view { 
         // Validate the message
         uint256 maxMessageAge = 5 minutes;
-        if (!ReservoirOracle._verifyMessage(maxMessageAge, message)) {
+        if (!ReservoirOracle._verifyMessage(message.id, maxMessageAge, message)) {
             revert ReservoirOracle.InvalidMessage();
         }
 

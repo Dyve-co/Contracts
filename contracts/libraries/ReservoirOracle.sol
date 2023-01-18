@@ -26,9 +26,15 @@ library ReservoirOracle {
     // --- Internal methods ---
 
     function _verifyMessage(
+        bytes32 id,
         uint256 validFor,
         Message memory message
     ) internal view returns (bool success) {
+        // Ensure the message matches the requested id
+        if (id != message.id) {
+            return false;
+        }
+
         // Ensure the message timestamp is valid
         if (
             message.timestamp > block.timestamp ||

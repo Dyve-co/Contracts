@@ -51,6 +51,7 @@ contract Dyve is
     uint256 expiryDateTime;
     uint256 collateral;
     address currency;
+    bytes32 tokenFlaggingId;
     OrderStatus status;
   }
 
@@ -214,7 +215,7 @@ contract Dyve is
 
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
-    if (!ReservoirOracle._verifyMessage(maxMessageAge, message)) {
+    if (!ReservoirOracle._verifyMessage(order.tokenFlaggingId, maxMessageAge, message)) {
         revert ReservoirOracle.InvalidMessage();
     }
     (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
@@ -301,6 +302,7 @@ contract Dyve is
       expiryDateTime: block.timestamp + order.duration,
       collateral: order.collateral,
       currency: order.currency,
+      tokenFlaggingId: order.tokenFlaggingId,
       status: OrderStatus.BORROWED
     });
   }

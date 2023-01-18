@@ -499,7 +499,14 @@ describe("Dyve", function () {
       .to.be.rejectedWith("Signature: Invalid")
   })
 
-  it("consumes Maker Bid (with ETH) Listing then closes the position", async () => {
+  it.only("consumes Maker Bid (with ETH) Listing then closes the position", async () => {
+    const options = {
+      method: 'GET',
+      url: 'https://api-goerli.reservoir.tools/oracle/collections/floor-ask/v4?collection=0xc963CaC86C0Acabe5450df56d3Fa7a26DA981D53',
+      headers: {accept: '*/*', 'x-api-key': 'dyve-api-key'}
+    };
+    const { message } = (await axios.request(options)).data
+
     const data = {
       orderType: 0,
       signer: owner.address,
@@ -518,13 +525,16 @@ describe("Dyve", function () {
 
     const signature = await generateSignature(data, owner, dyve)
     const makerOrder = { ...data, signature }
+    
+    await network.provider.send("evm_setNextBlockTimestamp", [message.timestamp - 100])
+    await network.provider.send("evm_mine")
 
     const totalAmount = ethers.utils.parseEther("1.1").toString();
     const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
     await borrowTx.wait();
 
     const makerOrderHash = computeOrderHash(data);
-    const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId);
+    const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
     await closeTx.wait();
 
     const order = await dyve.orders(makerOrderHash)
