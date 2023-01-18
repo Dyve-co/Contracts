@@ -14,10 +14,14 @@ contract Oracle {
     function checkMessage(ReservoirOracle.Message calldata message) external view { 
         // Validate the message
         uint256 maxMessageAge = 5 minutes;
-        if (!ReservoirOracle._verifyMessage(message.id, maxMessageAge, message)) {
+        if (!ReservoirOracle._verifyMessage(maxMessageAge, message)) {
             revert ReservoirOracle.InvalidMessage();
         }
 
-        (address messageCurrency, uint256 messagePrice) = abi.decode(message.payload, (address, uint256)); 
+        (bool flaggedStatus, uint256 lastTransferTime) = abi.decode(message.payload, (bool, uint256)); 
+        console.log("flagged status");
+        console.logBool(flaggedStatus);
+        console.log("last transfer time");
+        console.logUint(lastTransferTime);
     }
 }
