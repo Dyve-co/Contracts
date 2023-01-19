@@ -142,7 +142,7 @@ contract Dyve is
   * @notice Fullfills the order
   * @param order the order to be fulfilled
   */
-  function fulfillOrder(OrderTypes.Order calldata order) // ReservoirOracle.Message calldata message
+  function fulfillOrder(OrderTypes.Order calldata order)
       external
       payable
       nonReentrant

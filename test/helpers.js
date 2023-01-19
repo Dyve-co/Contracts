@@ -62,7 +62,20 @@ const generateSignature = async (data, signer, contract) => {
     chainId: "31337",
     verifyingContract: contract.address
   }
-  const signature = await signer._signTypedData(domain, orderType, data)
+  const orderTypeData = {
+    orderType: data.orderType, 
+    signer: data.signer, 
+    collection: data.collection, 
+    tokenId: data.tokenId, 
+    duration: data.duration, 
+    collateral: data.collateral, 
+    fee: data.fee, 
+    currency: data.currency, 
+    nonce: data.nonce, 
+    startTime: data.startTime, 
+    endTime: data.endTime, 
+  }
+  const signature = await signer._signTypedData(domain, orderType, orderTypeData)
 
   return signature
 }
@@ -73,6 +86,7 @@ const generateOracleSignature = async (data, signer) => {
     version: "1",
     chainId: "31337",
   }
+
   const signature = await signer._signTypedData(domain, messageType, data)
 
   return signature
