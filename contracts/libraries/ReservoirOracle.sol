@@ -45,12 +45,6 @@ library ReservoirOracle {
         ) {
             revert InvalidTimestamp();
         }
-        // console.log("message timestamp");
-        // console.logUint(message.timestamp);
-        // console.log("valid for");
-        // console.logUint(validFor);
-        // console.log("message timestamp + validFor");
-        // console.logUint(message.timestamp + validFor);
 
         bytes32 r;
         bytes32 s;
