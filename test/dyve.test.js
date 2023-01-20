@@ -45,7 +45,10 @@ beforeEach(async function () {
 });
 
 describe("Dyve", function () {
-  describe("Dyve closing positions", function () {
+  // test close position functionality first due to issues with timestamp returned back from API and block.timestamp
+  // API timestamp gives accurate time
+  // block.timestamp seems to be moving faster in hardhat test
+  describe("Closing position functionality", function () {
     it("consumes Maker Bid ERC721 (with ETH) Listing then closes the position", async () => {
         const options = {
           method: 'GET',
@@ -78,10 +81,6 @@ describe("Dyve", function () {
         const totalAmount = ethers.utils.parseEther("1.1").toString();
         const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
         await borrowTx.wait();
-
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 10]); 
-        // await network.provider.send("evm_mine");
 
         const makerOrderHash = computeOrderHash(data);
         const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
@@ -405,7 +404,7 @@ describe("Dyve", function () {
       })
   })
 
-  describe("main functions", function () {
+  describe("Initial checks", function () {
     it("checks initial properties were set correctly", async () => {
       const DOMAIN_SEPARATOR = keccak256(defaultAbiCoder.encode(
         ["bytes32", "bytes32", "bytes32", "uint256", "address"],
@@ -421,7 +420,9 @@ describe("Dyve", function () {
       await expect(dyve.DOMAIN_SEPARATOR()).to.eventually.equal(DOMAIN_SEPARATOR)
       await expect(dyve.protocolFeeRecipient()).to.eventually.equal(protocolFeeRecipient.address)
     })
+  })
 
+  describe("Fulfill order functionality", function () {
     it("consumes maker ask (listing ERC721) with taker bid using ETH", async () => {
       const data = {
         orderType: ETH_TO_ERC721,
@@ -866,6 +867,122 @@ describe("Dyve", function () {
         .to.be.rejectedWith("Order: Matching order listing expired")
     })
 
+    it("checks validation for fulfillOrder", async () => {
+      const data = {
+        orderType: ETH_TO_ERC721,
+        signer: owner.address,
+        collection: lender.address,
+        tokenId: 1,
+        amount: 1,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: ethers.constants.AddressZero,
+        nonce: 100,
+        premiumCollection: ethers.constants.AddressZero,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+        tokenFlaggingId: ethers.constants.HashZero,
+      }
+
+      const signature = await generateSignature(data, owner, dyve)
+      const makerOrder = { ...data, signature }
+
+      const totalAmount = ethers.utils.parseEther("1.1");
+
+      // Incorrect amount of ETH sent
+      const reducedAmount = totalAmount.sub(1);
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: reducedAmount }))
+        .to.be.rejectedWith("Order: Incorrect amount of ETH sent")
+
+      // ETH sent to an ERC20 based transaction
+      const ERC20Order = { ...makerOrder, currency: weth.address, orderType: ERC20_TO_ERC721 }
+      await expect(dyve.connect(addr1).fulfillOrder(ERC20Order, { value: totalAmount }))
+        .to.be.rejectedWith("Order: ETH sent for an ERC20 type transaction")
+
+      // Signer is the zero address
+      const zeroAddressMaker = { ...makerOrder, signer: ethers.constants.AddressZero }
+      await expect(dyve.connect(addr1).fulfillOrder(zeroAddressMaker, { value: totalAmount }))
+        .to.be.rejectedWith("Order: Invalid signer")
+
+      // listing has expired
+      const expiredListingMaker = { ...makerOrder, endTime: data.startTime - 100 }
+      await expect(dyve.connect(addr1).fulfillOrder(expiredListingMaker, { value: totalAmount }))
+        .to.be.rejectedWith("Order: Order listing expired")
+
+      // fee is zero
+      const feeZeroMaker = { ...makerOrder, fee: ethers.utils.parseEther("0").toString() }
+      await expect(dyve.connect(addr1).fulfillOrder(feeZeroMaker, { value: ethers.utils.parseEther("1") }))
+        .to.be.rejectedWith("Order: fee cannot be 0")
+
+      // collateral is zero
+      const collateralZeroMaker = { ...makerOrder, collateral: ethers.utils.parseEther("0").toString() }
+      await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, { value: ethers.utils.parseEther("0.1") }))
+        .to.be.rejectedWith("Order: collateral cannot be 0")
+
+      // invalid signature
+      const invalidSignatureMaker = { ...makerOrder, signature: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
+      await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, { value: totalAmount }))
+        .to.be.rejectedWith("Signature: Invalid")
+    })
+  })
+
+  describe("Premium collections functionality", function () {
+    it("consumes Maker Bid Listing (using ETH) then the lender claims the collateral", async () => {
+      const data = {
+        orderType: ETH_TO_ERC721,
+        signer: owner.address,
+        collection: lender.address,
+        tokenId: 1,
+        amount: 1,
+        duration: 100,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: ethers.constants.AddressZero,
+        nonce: 100,
+        premiumCollection: ethers.constants.AddressZero,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+        tokenFlaggingId: ethers.constants.HashZero,
+      }
+
+      const signature = await generateSignature(data, owner, dyve)
+      const makerOrder = { ...data, signature }
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") })
+      await borrowTx.wait();
+
+      const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
+      await ethers.provider.send("evm_mine", [timestamp + 110]);
+
+      const makerOrderHash = computeOrderHash(data);
+      const claimTx = await dyve.claimCollateral(makerOrderHash);
+      await claimTx.wait();
+
+      const order = await dyve.orders(makerOrderHash);
+
+      await expect(() => claimTx).to.changeEtherBalance(owner, ethers.utils.parseEther("1"));
+      await expect(() => claimTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
+      expect(order.status).to.equal(1);
+
+      await expect(claimTx)
+      .to.emit(dyve, "Claim")
+      .withArgs(
+        order.orderHash,
+        order.orderType,
+        order.borrower,
+        order.lender,
+        order.collection,
+        order.tokenId,
+        order.amount,
+        order.collateral,
+        order.currency,
+        order.status,
+      )
+    })
+
     it("consumes maker ask (listing ERC721) with taker bid using USDC and the maker owns an NFT from a premium collection with zero fees", async () => {
       const data = {
         orderType: ERC20_TO_ERC721,
@@ -1029,123 +1146,9 @@ describe("Dyve", function () {
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
       await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
     })
+  })
 
-
-
-    it("checks validation for fulfillOrder", async () => {
-      const data = {
-        orderType: ETH_TO_ERC721,
-        signer: owner.address,
-        collection: lender.address,
-        tokenId: 1,
-        amount: 1,
-        duration: 10800,
-        collateral: ethers.utils.parseEther("1").toString(),
-        fee: ethers.utils.parseEther("0.1").toString(),
-        currency: ethers.constants.AddressZero,
-        nonce: 100,
-        premiumCollection: ethers.constants.AddressZero,
-        premiumTokenId: 0,
-        startTime: Math.floor(Date.now() / 1000),
-        endTime: Math.floor(Date.now() / 1000) + 86400,
-        tokenFlaggingId: ethers.constants.HashZero,
-      }
-
-      const signature = await generateSignature(data, owner, dyve)
-      const makerOrder = { ...data, signature }
-
-      const totalAmount = ethers.utils.parseEther("1.1");
-
-      // Incorrect amount of ETH sent
-      const reducedAmount = totalAmount.sub(1);
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: reducedAmount }))
-        .to.be.rejectedWith("Order: Incorrect amount of ETH sent")
-
-      // ETH sent to an ERC20 based transaction
-      const ERC20Order = { ...makerOrder, currency: weth.address, orderType: ERC20_TO_ERC721 }
-      await expect(dyve.connect(addr1).fulfillOrder(ERC20Order, { value: totalAmount }))
-        .to.be.rejectedWith("Order: ETH sent for an ERC20 type transaction")
-
-      // Signer is the zero address
-      const zeroAddressMaker = { ...makerOrder, signer: ethers.constants.AddressZero }
-      await expect(dyve.connect(addr1).fulfillOrder(zeroAddressMaker, { value: totalAmount }))
-        .to.be.rejectedWith("Order: Invalid signer")
-
-      // listing has expired
-      const expiredListingMaker = { ...makerOrder, endTime: data.startTime - 100 }
-      await expect(dyve.connect(addr1).fulfillOrder(expiredListingMaker, { value: totalAmount }))
-        .to.be.rejectedWith("Order: Order listing expired")
-
-      // fee is zero
-      const feeZeroMaker = { ...makerOrder, fee: ethers.utils.parseEther("0").toString() }
-      await expect(dyve.connect(addr1).fulfillOrder(feeZeroMaker, { value: ethers.utils.parseEther("1") }))
-        .to.be.rejectedWith("Order: fee cannot be 0")
-
-      // collateral is zero
-      const collateralZeroMaker = { ...makerOrder, collateral: ethers.utils.parseEther("0").toString() }
-      await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, { value: ethers.utils.parseEther("0.1") }))
-        .to.be.rejectedWith("Order: collateral cannot be 0")
-
-      // invalid signature
-      const invalidSignatureMaker = { ...makerOrder, signature: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
-      await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, { value: totalAmount }))
-        .to.be.rejectedWith("Signature: Invalid")
-    })
-
-    it("consumes Maker Bid Listing (using ETH) then the lender claims the collateral", async () => {
-      const data = {
-        orderType: ETH_TO_ERC721,
-        signer: owner.address,
-        collection: lender.address,
-        tokenId: 1,
-        amount: 1,
-        duration: 100,
-        collateral: ethers.utils.parseEther("1").toString(),
-        fee: ethers.utils.parseEther("0.1").toString(),
-        currency: ethers.constants.AddressZero,
-        nonce: 100,
-        premiumCollection: ethers.constants.AddressZero,
-        premiumTokenId: 0,
-        startTime: Math.floor(Date.now() / 1000),
-        endTime: Math.floor(Date.now() / 1000) + 86400,
-        tokenFlaggingId: ethers.constants.HashZero,
-      }
-
-      const signature = await generateSignature(data, owner, dyve)
-      const makerOrder = { ...data, signature }
-
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") })
-      await borrowTx.wait();
-
-      const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
-      await ethers.provider.send("evm_mine", [timestamp + 110]);
-
-      const makerOrderHash = computeOrderHash(data);
-      const claimTx = await dyve.claimCollateral(makerOrderHash);
-      await claimTx.wait();
-
-      const order = await dyve.orders(makerOrderHash);
-
-      await expect(() => claimTx).to.changeEtherBalance(owner, ethers.utils.parseEther("1"));
-      await expect(() => claimTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
-      expect(order.status).to.equal(1);
-
-      await expect(claimTx)
-      .to.emit(dyve, "Claim")
-      .withArgs(
-        order.orderHash,
-        order.orderType,
-        order.borrower,
-        order.lender,
-        order.collection,
-        order.tokenId,
-        order.amount,
-        order.collateral,
-        order.currency,
-        order.status,
-      )
-    })
-
+  describe("Claim collateral functionality", function () {
     it("consumes Maker Bid Listing (using USDC) then the lender claims the collateral", async () => {
       const data = {
         orderType: ERC20_TO_ERC721,
@@ -1252,9 +1255,10 @@ describe("Dyve", function () {
 
       await expect(dyve.claimCollateral(makerOrderHash))   
         .to.be.rejectedWith("Order: Order is not borrowed")
+    })
   })
 
-
+  describe("Cancel order functionality", function () {
     it("cancels all orders for user then fails to list order with old nonce", async () => {
       const cancelTx = await dyve.cancelAllOrdersForSender(120);
       await cancelTx.wait()
@@ -1342,6 +1346,38 @@ describe("Dyve", function () {
         .to.be.rejectedWith("Cancel: Cannot be empty")
       await expect(dyve.cancelMultipleMakerOrders([100]))
         .to.be.rejectedWith("Cancel: Order nonce lower than current")
+    })
+  })
+
+  describe("Premium Collections Contract functionality", function () {
+    it("adds and removes lender as a premium collection", async () => {
+      const addPremiumCollectionTx = await premiumCollections.updatePremiumCollection(lender.address, 1) 
+      await addPremiumCollectionTx.wait()
+
+      await expect(premiumCollections.getFeeRate(lender.address)).to.be.eventually.equal(1)
+      await expect(addPremiumCollectionTx).to.emit(premiumCollections, "UpdatedPremiumCollection").withArgs(lender.address, 1)
+
+      const removePremiumCollectionTx = await premiumCollections.updatePremiumCollection(lender.address, 0)
+      await removePremiumCollectionTx.wait()
+
+      await expect(premiumCollections.getFeeRate(lender.address)).to.be.eventually.equal(0)
+      await expect(removePremiumCollectionTx).to.emit(premiumCollections, "UpdatedPremiumCollection").withArgs(lender.address, 0)
+    })
+  })
+
+  describe("Whitelisted Currencies Contract functionality", function () {
+    it("adds and removes USDC as a whitelisted currency", async () => {
+      const addWhitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address) 
+      await addWhitelistTx.wait()
+
+      await expect(whitelistedCurrencies.isCurrencyWhitelisted(mockUSDC.address)).to.be.eventually.true
+      await expect(addWhitelistTx).to.emit(whitelistedCurrencies, "AddCurrencyToWhitelist").withArgs(mockUSDC.address)
+
+      const removeWhitelistTx = await whitelistedCurrencies.removeWhitelistedCurrency(mockUSDC.address) 
+      await removeWhitelistTx.wait()
+
+      await expect(whitelistedCurrencies.isCurrencyWhitelisted(mockUSDC.address)).to.be.eventually.false
+      await expect(removeWhitelistTx).to.emit(whitelistedCurrencies, "RemoveCurrencyFromWhitelist").withArgs(mockUSDC.address)
     })
   })
 })

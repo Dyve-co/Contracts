@@ -7,9 +7,19 @@ const addresses = {
 }
 
 async function main() {
-  const Dyve = await hre.ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(addresses.FEE_RECIPIENT);
-  const tx = await dyve.deployTransaction.wait();
+  const WhitelistedCurrencies = await ethers.getContractFactory("WhitelistedCurrencies");
+  const whitelistedCurrencies = await WhitelistedCurrencies.deploy();
+  await whitelistedCurrencies.deployed();
+  console.log("Whitelisted Currencies deployed: ", whitelistedCurrencies.address)
+
+  const PremiumCollections = await ethers.getContractFactory("PremiumCollections");
+  const premiumCollections = await PremiumCollections.deploy();
+  await premiumCollections.deployed();
+  console.log("Premium Collections deployed: ", premiumCollections.address)
+
+  const Dyve = await ethers.getContractFactory("Dyve");
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, premiumCollections.address, addresses.FEE_RECPIENT);
+  await dyve.deployed();
   console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);
 
