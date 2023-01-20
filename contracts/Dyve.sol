@@ -51,6 +51,7 @@ contract Dyve is
     uint256 expiryDateTime;
     uint256 collateral;
     address currency;
+    bytes32 tokenFlaggingId;
     OrderStatus status;
   }
 
@@ -141,7 +142,7 @@ contract Dyve is
   * @notice Fullfills the order
   * @param order the order to be fulfilled
   */
-  function fulfillOrder(OrderTypes.Order calldata order) // ReservoirOracle.Message calldata message
+  function fulfillOrder(OrderTypes.Order calldata order)
       external
       payable
       nonReentrant
@@ -202,14 +203,23 @@ contract Dyve is
   * @dev we check that the borrower owns the incoming ID from the collection.
   * @param orderHash order hash of the maker order
   * @param returnTokenId the NFT to be returned
+  * @param message the message from the oracle
   */
-  function closePosition(bytes32 orderHash, uint256 returnTokenId) external {
+  function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
     Order storage order = orders[orderHash];
 
     require(order.borrower == msg.sender, "Order: Borrower must be the sender");
     require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning ERC721 token");
     require(order.expiryDateTime > block.timestamp, "Order: Order expired");
     require(order.status == OrderStatus.BORROWED, "Order: Order is not borrowed");
+
+    // Validate the message
+    uint256 maxMessageAge = 5 minutes;
+    if (!ReservoirOracle._verifyMessage(order.tokenFlaggingId, maxMessageAge, message)) {
+        revert ReservoirOracle.InvalidMessage();
+    }
+    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
+    require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 
     order.status = OrderStatus.CLOSED;
 
@@ -292,6 +302,7 @@ contract Dyve is
       expiryDateTime: block.timestamp + order.duration,
       collateral: order.collateral,
       currency: order.currency,
+      tokenFlaggingId: order.tokenFlaggingId,
       status: OrderStatus.BORROWED
     });
   }
@@ -443,12 +454,6 @@ contract Dyve is
 
       // Verify that the currency is whitelisted
       require(order.orderType == OrderType.ETH_TO_ERC721 || isCurrencyWhitelisted[order.currency], "Order: currency not whitelisted");
-
-      // Verify that the NFT is not flagged as stolen
-      // uint256 maxMessageAge = 5 minutes;
-      // if (!ReservoirOracle._verifyMessage(message.id, maxMessageAge, message)) {
-      //     revert ReservoirOracle.InvalidMessage();
-      // }
 
       // Verify the validity of the signature
       require(

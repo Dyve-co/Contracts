@@ -1,4 +1,5 @@
-module.exports = {
+
+const orderType = {
   Order: [
     { name: "orderType", type: "uint256" },
     { name: "signer", type: "address" },
@@ -13,3 +14,13 @@ module.exports = {
     { name: "endTime", type: "uint256" },
   ]
 }
+
+const messageType = {
+  Message: [
+    { name: 'id', type: 'bytes32' },
+    { name: 'payload', type: 'bytes' },
+    { name: 'timestamp', type: 'uint256' },
+  ]
+}
+
+module.exports = { orderType, messageType }

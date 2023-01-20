@@ -17,6 +17,9 @@ library ReservoirOracle {
 
     // --- Errors ---
 
+    error InvalidId();
+    error InvalidTimestamp();
+    error InvalidSignature();
     error InvalidMessage();
 
     // --- Fields ---
@@ -32,16 +35,16 @@ library ReservoirOracle {
     ) internal view returns (bool success) {
         // Ensure the message matches the requested id
         if (id != message.id) {
-            return false;
+            revert InvalidId();
         }
 
         // Ensure the message timestamp is valid
-        // if (
-        //     message.timestamp > block.timestamp ||
-        //     message.timestamp + validFor < block.timestamp
-        // ) {
-        //     return false;
-        // }
+        if (
+            message.timestamp > block.timestamp ||
+            message.timestamp + validFor < block.timestamp
+        ) {
+            revert InvalidTimestamp();
+        }
 
         bytes32 r;
         bytes32 s;
@@ -49,7 +52,6 @@ library ReservoirOracle {
 
         // Extract the individual signature fields from the signature
         bytes memory signature = message.signature;
-        console.logUint(signature.length);
         if (signature.length == 64) {
             // EIP-2098 compact signature
             bytes32 vs;
@@ -70,7 +72,7 @@ library ReservoirOracle {
                 v := byte(0, mload(add(signature, 0x60)))
             }
         } else {
-            return false;
+            revert InvalidSignature();
         }
 
         address signerAddress = ecrecover(

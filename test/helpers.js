@@ -1,6 +1,6 @@
 const { ethers } = require('hardhat')
 const { constants } = require('ethers')
-const types = require("./types")
+const { orderType, messageType } = require("./types")
 const { keccak256, defaultAbiCoder, parseEther } = ethers.utils;
 
 const setup = async (protocolFeeRecipient) => {
@@ -62,13 +62,34 @@ const generateSignature = async (data, signer, contract) => {
     chainId: "31337",
     verifyingContract: contract.address
   }
-  const signature = (await signer._signTypedData(domain, types, data)).substring(2)
+  const orderTypeData = {
+    orderType: data.orderType, 
+    signer: data.signer, 
+    collection: data.collection, 
+    tokenId: data.tokenId, 
+    duration: data.duration, 
+    collateral: data.collateral, 
+    fee: data.fee, 
+    currency: data.currency, 
+    nonce: data.nonce, 
+    startTime: data.startTime, 
+    endTime: data.endTime, 
+  }
+  const signature = await signer._signTypedData(domain, orderType, orderTypeData)
 
-  // const r = "0x" + signature.slice(0, 64)
-  // const s = "0x" + signature.slice(64, 128)
-  // const v = parseInt(signature.slice(128, 130), 16)
+  return signature
+}
 
-  return "0x" + signature
+const generateOracleSignature = async (data, signer) => {
+  const domain = {
+    name: "Oracle",
+    version: "1",
+    chainId: "31337",
+  }
+
+  const signature = await signer._signTypedData(domain, messageType, data)
+
+  return signature
 }
 
 const computeOrderHash = (order) => {
@@ -109,5 +130,6 @@ module.exports = {
   setup,
   tokenSetup,
   generateSignature,
+  generateOracleSignature,
   computeOrderHash,
 }

@@ -20,7 +20,7 @@ module.exports = {
     artifacts: './artifacts'
   },
   gasReporter: {
-    enabled: true
+    enabled: false,
   },
   networks: {
     rinkeby: {

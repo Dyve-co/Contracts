@@ -18,6 +18,10 @@ contract Oracle {
             revert ReservoirOracle.InvalidMessage();
         }
 
-        (address messageCurrency, uint256 messagePrice) = abi.decode(message.payload, (address, uint256)); 
+        (bool flaggedStatus, uint256 lastTransferTime) = abi.decode(message.payload, (bool, uint256)); 
+        console.log("flagged status");
+        console.logBool(flaggedStatus);
+        console.log("last transfer time");
+        console.logUint(lastTransferTime);
     }
 }
