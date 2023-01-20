@@ -20,14 +20,22 @@ const setup = async (protocolFeeRecipient) => {
   const mockERC721 = await MockERC721.deploy();
   await mockERC721.deployed();
 
+  const WhitelistedCurrencies = await ethers.getContractFactory("WhitelistedCurrencies");
+  const whitelistedCurrencies = await WhitelistedCurrencies.deploy();
+  await whitelistedCurrencies.deployed();
+
+  const PremiumCollections = await ethers.getContractFactory("PremiumCollections");
+  const premiumCollections = await PremiumCollections.deploy();
+  await premiumCollections.deployed();
+
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, premiumCollections.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
-  return [lender, weth, mockUSDC, mockERC721, dyve];
+  return [lender, weth, mockUSDC, mockERC721, whitelistedCurrencies, premiumCollections, dyve];
 } 
 
-const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, dyve) => {
+const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, whitelistedCurrencies, premiumCollections, dyve) => {
   for (const user of users) {
     // Each user gets 30 WETH
     await weth.connect(user).deposit({ value: parseEther("30") });
@@ -48,10 +56,10 @@ const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, dyve) => {
     await lender.connect(user).setApprovalForAll(dyve.address, true);
 
     // Add WETH to currency whitelist
-    await dyve.addWhitelistedCurrency(weth.address);
+    await whitelistedCurrencies.addWhitelistedCurrency(weth.address);
 
     // Add premium mock ERC721 to collection whitelist
-    await dyve.addPremiumCollection(mockERC721.address, 1);
+    await premiumCollections.updatePremiumCollection(mockERC721.address, 1);
   }
 }
 
@@ -73,7 +81,6 @@ const generateSignature = async (data, signer, contract) => {
     fee: data.fee, 
     currency: data.currency, 
     nonce: data.nonce, 
-    startTime: data.startTime, 
     endTime: data.endTime, 
   }
   const signature = await signer._signTypedData(domain, orderType, orderTypeData)
@@ -107,11 +114,10 @@ const computeOrderHash = (order) => {
     "address",
     "uint256",
     "uint256",
-    "uint256",
   ]
 
   const values = [
-    "0x4cd010be0f33bfd9fd3bf5d095bfb8e3de601db29d12cfbc8c018018cb1bf4fc",
+    "0xaad599fc66ff6b968ccb16010214cc3102e0a7e009000f61cab3f208682c3088",
     order.orderType,
     order.signer,
     order.collection,
@@ -122,7 +128,6 @@ const computeOrderHash = (order) => {
     order.fee,
     order.currency,
     order.nonce,
-    order.startTime,
     order.endTime,
   ]
 

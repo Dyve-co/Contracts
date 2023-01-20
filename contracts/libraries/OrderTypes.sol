@@ -17,9 +17,8 @@ enum OrderType {
  * @notice This library contains order types for Dyve
  */
 library OrderTypes {
-    bytes32 internal constant ORDER_HASH = keccak256(
-        "Order(uint256 orderType,address signer,address collection,uint256 tokenId,uint256 amount,uint256 duration,uint256 collateral,uint256 fee,address currency,uint256 nonce,uint256 endTime)"
-    ); 
+    // keccak256("Order(uint256 orderType,address signer,address collection,uint256 tokenId,uint256 amount,uint256 duration,uint256 collateral,uint256 fee,address currency,uint256 nonce,uint256 endTime)")
+    bytes32 internal constant ORDER_HASH = 0xaad599fc66ff6b968ccb16010214cc3102e0a7e009000f61cab3f208682c3088;
 
     struct Order {
         OrderType orderType; // the type of order

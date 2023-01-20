@@ -32,24 +32,26 @@ beforeEach(async function () {
   [owner, addr1, addr2, ...addrs] = accounts;
   protocolFeeRecipient = addr2;
 
-  [lender, weth, mockUSDC, mockERC721, dyve] = await setup(protocolFeeRecipient)
-  await tokenSetup([owner, addr1, addr2], weth, mockUSDC, lender, mockERC721, dyve)
+  [lender, weth, mockUSDC, mockERC721, whitelistedCurrencies, premiumCollections, dyve] = await setup(protocolFeeRecipient)
+  await tokenSetup([owner, addr1, addr2], weth, mockUSDC, lender, mockERC721, whitelistedCurrencies, premiumCollections, dyve)
 });
 
 describe("Dyve", function () {
-  it("consumes Maker Bid (with ETH) Listing then closes the position", async () => {
+  it.only("consumes Maker Bid (with ETH) Listing then closes the position", async () => {
     const options = {
       method: 'GET',
       url: 'https://api-goerli.reservoir.tools/oracle/tokens/status/v1?tokens=0xc963cac86c0acabe5450df56d3fa7a26da981d53%3A47',
       headers: {accept: '*/*', 'x-api-key': 'dyve-api-key'}
     };
     const { messages: [{ message }] } = (await axios.request(options)).data
+    console.log("message: ", message)
 
     const data = {
       orderType: 0,
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -110,6 +112,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -180,6 +183,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -312,6 +316,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -379,6 +384,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -449,6 +455,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -487,6 +494,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -528,6 +536,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -569,6 +578,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -611,6 +621,7 @@ describe("Dyve", function () {
       signer: addr1.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -682,6 +693,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -741,6 +753,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 100,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -793,6 +806,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 100,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -853,6 +867,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 100,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -902,6 +917,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
@@ -946,6 +962,7 @@ describe("Dyve", function () {
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
+      amount: 1,
       duration: 10800,
       collateral: ethers.utils.parseEther("1").toString(),
       fee: ethers.utils.parseEther("0.1").toString(),
