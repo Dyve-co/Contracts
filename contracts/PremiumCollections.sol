@@ -26,7 +26,7 @@ contract PremiumCollections is Ownable {
   * @notice returns the reduced fee rate for the specified collection
   * @param collection the address of the collection to be checked
   */
-  function getPremiumCollectionRate(address collection) external view returns (uint256) {
+  function getFeeRate(address collection) external view returns (uint256) {
     return premiumCollections[collection];
   }
 }

@@ -356,8 +356,8 @@ contract Dyve is
     uint256 protocolRate = 2000;
 
     // initial check of collection != address(0) should be more gas efficient than checking the mapping
-    if (collection != address(0) && premiumCollections.getPremiumCollectionRate(collection) > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
-      uint256 premiumCollectionRate = premiumCollections.getPremiumCollectionRate(collection);
+    if (collection != address(0) && premiumCollections.getFeeRate(collection) > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
+      uint256 premiumCollectionRate = premiumCollections.getFeeRate(collection);
       if (premiumCollectionRate == 1) {
         protocolRate = 0;
       } else {
