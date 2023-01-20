@@ -20,15 +20,27 @@ const setup = async (protocolFeeRecipient) => {
   const mockERC721 = await MockERC721.deploy();
   await mockERC721.deployed();
 
+  const MockERC1155 = await ethers.getContractFactory("MockERC1155");
+  const mockERC1155 = await MockERC1155.deploy();
+  await mockERC1155.deployed();
+
+  const WhitelistedCurrencies = await ethers.getContractFactory("WhitelistedCurrencies");
+  const whitelistedCurrencies = await WhitelistedCurrencies.deploy();
+  await whitelistedCurrencies.deployed();
+
+  const PremiumCollections = await ethers.getContractFactory("PremiumCollections");
+  const premiumCollections = await PremiumCollections.deploy();
+  await premiumCollections.deployed();
+
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, premiumCollections.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
-  return [lender, weth, mockUSDC, mockERC721, dyve];
+  return [lender, weth, mockUSDC, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve];
 } 
 
-const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, dyve) => {
-  for (const user of users) {
+const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve) => {
+  await Promise.all(users.map(async (user, index) => {
     // Each user gets 30 WETH
     await weth.connect(user).deposit({ value: parseEther("30") });
 
@@ -44,15 +56,21 @@ const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, dyve) => {
     // Each user mints 1 ERC721 NFT
     await lender.connect(user).mint();
 
-    // Set approval for all tokens in mock collection to transferManager contract for ERC721
+    // Set approval for all tokens in lender collection
     await lender.connect(user).setApprovalForAll(dyve.address, true);
 
+    // Each user mints 10 ERC1155 NFT
+    await mockERC1155.connect(user).mint(index, 10);
+
+    // Set approval for all tokens in mockERC1155 collection
+    await mockERC1155.connect(user).setApprovalForAll(dyve.address, true);
+
     // Add WETH to currency whitelist
-    await dyve.addWhitelistedCurrency(weth.address);
+    await whitelistedCurrencies.addWhitelistedCurrency(weth.address);
 
     // Add premium mock ERC721 to collection whitelist
-    await dyve.addPremiumCollection(mockERC721.address, 1);
-  }
+    await premiumCollections.updatePremiumCollection(mockERC721.address, 1);
+  }))
 }
 
 const generateSignature = async (data, signer, contract) => {
@@ -67,12 +85,12 @@ const generateSignature = async (data, signer, contract) => {
     signer: data.signer, 
     collection: data.collection, 
     tokenId: data.tokenId, 
+    amount: data.amount,
     duration: data.duration, 
     collateral: data.collateral, 
     fee: data.fee, 
     currency: data.currency, 
     nonce: data.nonce, 
-    startTime: data.startTime, 
     endTime: data.endTime, 
   }
   const signature = await signer._signTypedData(domain, orderType, orderTypeData)
@@ -102,24 +120,24 @@ const computeOrderHash = (order) => {
     "uint256",
     "uint256",
     "uint256",
-    "address",
     "uint256",
+    "address",
     "uint256",
     "uint256",
   ]
 
   const values = [
-    "0x4cd010be0f33bfd9fd3bf5d095bfb8e3de601db29d12cfbc8c018018cb1bf4fc",
+    "0xaad599fc66ff6b968ccb16010214cc3102e0a7e009000f61cab3f208682c3088",
     order.orderType,
     order.signer,
     order.collection,
     order.tokenId,
+    order.amount,
     order.duration,
     order.collateral,
     order.fee,
     order.currency,
     order.nonce,
-    order.startTime,
     order.endTime,
   ]
 
