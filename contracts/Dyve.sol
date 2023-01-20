@@ -10,29 +10,28 @@ import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
-// Dyve interfaces/libraries/contracts
+// Dyve interfaces/libraries
+import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
+import {IPremiumCollections} from "./interfaces/IPremiumCollections.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
-import {WhitelistedCurrencies} from "./WhitelistedCurrencies.sol";
-import {PremiumCollections} from "./PremiumCollections.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
   ReentrancyGuard,
-  EIP712("Dyve", "1"),
-  WhitelistedCurrencies,
-  PremiumCollections
+  EIP712("Dyve", "1")
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
   using ReservoirOracle for ReservoirOracle.Message;
 
+  IWhitelistedCurrencies public whitelistedCurrencies;
+  IPremiumCollections public premiumCollections;
+
   address public protocolFeeRecipient;
-  // ERC721 interfaceID
   bytes4 public constant INTERFACE_ID_ERC721 = 0x80ac58cd;
-  // ERC1155 interfaceID
   bytes4 public constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
 
   mapping(address => uint256) public userMinOrderNonce;
@@ -112,7 +111,9 @@ contract Dyve is
     * @notice Constructor
     * @param _protocolFeeRecipient protocol fee recipient
     */
-  constructor(address _protocolFeeRecipient) {
+  constructor(address whitelistedCurrenciesAddress, address premiumCollectionsAddress, address _protocolFeeRecipient) {
+    whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
+    premiumCollections = IPremiumCollections(premiumCollectionsAddress);
     protocolFeeRecipient = _protocolFeeRecipient;
   }
 
@@ -355,11 +356,12 @@ contract Dyve is
     uint256 protocolRate = 2000;
 
     // initial check of collection != address(0) should be more gas efficient than checking the mapping
-    if (collection != address(0) && premiumCollections[collection] > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
-      if (premiumCollections[collection] == 1) {
+    if (collection != address(0) && premiumCollections.getPremiumCollectionRate(collection) > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
+      uint256 premiumCollectionRate = premiumCollections.getPremiumCollectionRate(collection);
+      if (premiumCollectionRate == 1) {
         protocolRate = 0;
       } else {
-        protocolRate = premiumCollections[collection];
+        protocolRate = premiumCollectionRate;
       }
     }
 
@@ -448,7 +450,7 @@ contract Dyve is
       require(order.collateral > 0, "Order: collateral cannot be 0");
 
       // Verify that the currency is whitelisted
-      require(order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || isCurrencyWhitelisted[order.currency], "Order: currency not whitelisted");
+      require(order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || whitelistedCurrencies.isCurrencyWhitelisted(order.currency), "Order: currency not whitelisted");
 
       // Verify the validity of the signature
       require(

@@ -8,27 +8,25 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 contract PremiumCollections is Ownable {
   mapping(address => uint256) public premiumCollections;
 
-  event AddPremiumCollection(address indexed collection, uint256 reducedFeeRate);
-  event RemovePremiumCollection(address indexed collection);
+  event UpdatedPremiumCollection(address indexed collection, uint256 reducedFeeRate);
 
   /**
-  * @notice adds the specified currency to the list of supported currencies
+  * @notice updates the fee rate for the specified collection
   * @param collection the address of the collection to be added
-  * @param reducedFeeRate the reduced fee rate to be applied for lenders who hold an NFT from this collection
+  * @param feeRate the reduced fee rate to be applied for lenders who hold an NFT from this collection
+  * @dev setting the fee rate to zero will remove the collection from the list of premium collections
   */
-  function addPremiumCollection(address collection, uint256 reducedFeeRate) external onlyOwner {
-    premiumCollections[collection] = reducedFeeRate;
+  function updatePremiumCollection(address collection, uint256 feeRate) external onlyOwner {
+    premiumCollections[collection] = feeRate;
     
-    emit AddPremiumCollection(collection, reducedFeeRate);
+    emit UpdatedPremiumCollection(collection, feeRate);
   }
 
   /**
-  * @notice removes the specified currency from the list of supported currencies
-  * @param collection the address of the collection to be removed
+  * @notice returns the reduced fee rate for the specified collection
+  * @param collection the address of the collection to be checked
   */
-  function removePremiumCollection(address collection) external onlyOwner {
-    premiumCollections[collection] = 0;
-    
-    emit RemovePremiumCollection(collection);
+  function getPremiumCollectionRate(address collection) external view returns (uint256) {
+    return premiumCollections[collection];
   }
 }

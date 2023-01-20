@@ -6,7 +6,7 @@ pragma solidity ^0.8.16;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract WhitelistedCurrencies is Ownable {
-  mapping(address => bool) public isCurrencyWhitelisted;
+  mapping(address => bool) public currencyWhitelist;
 
   event AddCurrencyToWhitelist(address indexed currency);
   event RemoveCurrencyFromWhitelist(address indexed currency);
@@ -16,7 +16,7 @@ contract WhitelistedCurrencies is Ownable {
   * @param currency the address of the currency to be added
   */
   function addWhitelistedCurrency(address currency) external onlyOwner {
-    isCurrencyWhitelisted[currency] = true;
+    currencyWhitelist[currency] = true;
  
     emit AddCurrencyToWhitelist(currency);
   }
@@ -26,8 +26,16 @@ contract WhitelistedCurrencies is Ownable {
   * @param currency the address of the currency to be removed
   */
   function removeWhitelistedCurrency(address currency) external onlyOwner {
-    isCurrencyWhitelisted[currency] = false;
+    currencyWhitelist[currency] = false;
     
     emit RemoveCurrencyFromWhitelist(currency);
+  }
+
+  /**
+  * @notice checks if the specified currency is whitelisted
+  * @param currency the address of the currency to be checked
+  */
+  function isCurrencyWhitelisted(address currency) external view returns (bool) {
+    return currencyWhitelist[currency];
   }
 }
