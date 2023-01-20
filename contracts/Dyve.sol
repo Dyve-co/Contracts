@@ -153,8 +153,14 @@ contract Dyve is
       payable
       nonReentrant
   {
-    require(order.orderType != OrderType.ETH_TO_ERC721 || msg.value == (order.fee + order.collateral), "Order: Incorrect amount of ETH sent");
-    require(order.orderType == OrderType.ETH_TO_ERC721 || msg.value == 0, "Order: ETH sent for an ERC20 type transaction");
+    require(
+      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155) || msg.value == (order.fee + order.collateral),
+      "Order: Incorrect amount of ETH sent"
+    );
+    require(
+      order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || msg.value == 0, 
+      "Order: ETH sent for an ERC20 type transaction"
+    );
 
     // Check the maker ask order
     bytes32 orderHash = order.hash();

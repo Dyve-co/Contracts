@@ -4,7 +4,12 @@ const axios = require('axios')
 const { setup, tokenSetup, generateSignature, computeOrderHash } = require("./helpers")
 use(require('chai-as-promised'))
 
-const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
+const ETH_TO_ERC721 = 0
+const ETH_TO_ERC1155 = 1
+const ERC20_TO_ERC721 = 2
+const ERC20_TO_ERC1155 = 3
+const ERC721_TO_ERC20 = 4
+const ERC1155_TO_ERC20 = 5
 
 let accounts;
 let owner;
@@ -32,15 +37,15 @@ beforeEach(async function () {
   [owner, addr1, addr2, ...addrs] = accounts;
   protocolFeeRecipient = addr2;
 
-  [lender, weth, mockUSDC, mockERC721, whitelistedCurrencies, premiumCollections, dyve] = await setup(protocolFeeRecipient)
-  await tokenSetup([owner, addr1, addr2], weth, mockUSDC, lender, mockERC721, whitelistedCurrencies, premiumCollections, dyve)
+  [lender, weth, mockUSDC, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve] = await setup(protocolFeeRecipient)
+  await tokenSetup([owner, addr1, addr2], weth, mockUSDC, lender, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve)
 });
 
 // isolating test suite due to difference in timestamp received from API and the block.timestamp
 // API timestamp gives accurate time
 // block.timestamp seems to be moving faster in hardhat test
 describe("Dyve closing positions", function () {
- it.only("consumes Maker Bid (with ETH) Listing then closes the position", async () => {
+ it("consumes Maker Bid ERC721 (with ETH) Listing then closes the position", async () => {
     const options = {
       method: 'GET',
       url: 'https://api.reservoir.tools/oracle/tokens/status/v1?tokens=0x59468516a8259058baD1cA5F8f4BFF190d30E066%3A9',
@@ -49,7 +54,7 @@ describe("Dyve closing positions", function () {
     const { messages: [{ message }] } = (await axios.request(options)).data
 
     const data = {
-      orderType: 0,
+      orderType: ETH_TO_ERC721,
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
@@ -86,7 +91,7 @@ describe("Dyve closing positions", function () {
     await expect(() => closeTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
     await expect(() => closeTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("1"));
 
-    expect(lender.ownerOf(1)).to.eventually.equal(owner.address);
+    await expect(lender.ownerOf(1)).to.eventually.equal(owner.address);
     expect(order.status).to.equal(2);
 
     await expect(closeTx)
@@ -106,7 +111,7 @@ describe("Dyve closing positions", function () {
     )
   })
 
-  it.only("consumes Maker Bid (with USDC) Listing then closes the position", async () => {
+  it("consumes Maker Bid ERC1155 (with ETH) Listing then closes the position", async () => {
     const options = {
       method: 'GET',
       url: 'https://api.reservoir.tools/oracle/tokens/status/v1?tokens=0x59468516a8259058baD1cA5F8f4BFF190d30E066%3A9',
@@ -115,7 +120,69 @@ describe("Dyve closing positions", function () {
     const { messages: [{ message }] } = (await axios.request(options)).data
 
     const data = {
-      orderType: 2,
+      orderType: ETH_TO_ERC1155,
+      signer: owner.address,
+      collection: mockERC1155.address,
+      tokenId: 0,
+      amount: 10,
+      duration: 10800,
+      collateral: ethers.utils.parseEther("1").toString(),
+      fee: ethers.utils.parseEther("0.1").toString(),
+      currency: ethers.constants.AddressZero,
+      nonce: 100,
+      premiumCollection: ethers.constants.AddressZero,
+      premiumTokenId: 0,
+      startTime: Math.floor(Date.now() / 1000),
+      endTime: Math.floor(Date.now() / 1000) + 86400,
+      tokenFlaggingId: message.id,
+    }
+
+    const signature = await generateSignature(data, owner, dyve)
+    const makerOrder = { ...data, signature }
+
+    const totalAmount = ethers.utils.parseEther("1.1").toString();
+    const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
+    await borrowTx.wait();
+
+    const makerOrderHash = computeOrderHash(data);
+    const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
+    await closeTx.wait();
+
+    const order = await dyve.orders(makerOrderHash)
+
+    await expect(() => closeTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
+    await expect(() => closeTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("1"));
+
+    await expect(mockERC1155.balanceOf(owner.address, 0)).to.eventually.equal(10);
+    expect(order.status).to.equal(2);
+
+    await expect(closeTx)
+    .to.emit(dyve, "Close")
+    .withArgs(
+      order.orderHash,
+      order.orderType,
+      order.borrower,
+      order.lender,
+      order.collection,
+      order.tokenId,
+      order.amount,
+      0,
+      order.collateral,
+      order.currency,
+      order.status,
+    )
+  })
+
+  it("consumes Maker Bid ERC721 (with USDC) Listing then closes the position", async () => {
+    const options = {
+      method: 'GET',
+      url: 'https://api.reservoir.tools/oracle/tokens/status/v1?tokens=0x59468516a8259058baD1cA5F8f4BFF190d30E066%3A9',
+      headers: {accept: '*/*', 'x-api-key': 'dyve-api-key'}
+    };
+    const { messages: [{ message }] } = (await axios.request(options)).data
+
+    const data = {
+      orderType: ERC20_TO_ERC721,
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
@@ -154,7 +221,7 @@ describe("Dyve closing positions", function () {
     await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.eq(ethers.utils.parseEther("0"));
     await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.eq(ethers.utils.parseEther(String(30 - 0.1)));
 
-    expect(lender.ownerOf(1)).to.eventually.equal(owner.address);
+    await expect(lender.ownerOf(1)).to.eventually.equal(owner.address);
     expect(order.status).to.equal(2);
 
     await expect(closeTx)
@@ -174,17 +241,80 @@ describe("Dyve closing positions", function () {
     )
   })
 
-  it.only("checks validation for closePosition", async () => {
+  it("consumes Maker Bid ERC1155 (with USDC) Listing then closes the position", async () => {
+    const options = {
+      method: 'GET',
+      url: 'https://api.reservoir.tools/oracle/tokens/status/v1?tokens=0x59468516a8259058baD1cA5F8f4BFF190d30E066%3A9',
+      headers: {accept: '*/*', 'x-api-key': 'dyve-api-key'}
+    };
+    const { messages: [{ message }] } = (await axios.request(options)).data
+
+    const data = {
+      orderType: ERC20_TO_ERC1155,
+      signer: owner.address,
+      collection: mockERC1155.address,
+      tokenId: 0,
+      amount: 10,
+      duration: 10800,
+      collateral: ethers.utils.parseEther("1").toString(),
+      fee: ethers.utils.parseEther("0.1").toString(),
+      currency: mockUSDC.address,
+      nonce: 100,
+      premiumCollection: ethers.constants.AddressZero,
+      premiumTokenId: 0,
+      startTime: Math.floor(Date.now() / 1000),
+      endTime: Math.floor(Date.now() / 1000) + 86400,
+      tokenFlaggingId: message.id,
+    }
+
+    const signature = await generateSignature(data, owner, dyve)
+    const makerOrder = { ...data, signature }
+
+    const whitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
+    await whitelistTx.wait();
+
+    const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+    await borrowTx.wait();
+
+    const makerOrderHash = computeOrderHash(data);
+    const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
+    await closeTx.wait();
+
+    const order = await dyve.orders(makerOrderHash)
+
+    await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.eq(ethers.utils.parseEther("0"));
+    await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.eq(ethers.utils.parseEther(String(30 - 0.1)));
+
+    await expect(mockERC1155.balanceOf(owner.address, 0)).to.eventually.equal(10);
+    expect(order.status).to.equal(2);
+
+    await expect(closeTx)
+    .to.emit(dyve, "Close")
+    .withArgs(
+      order.orderHash,
+      order.orderType,
+      order.borrower,
+      order.lender,
+      order.collection,
+      order.tokenId,
+      order.amount,
+      0,
+      order.collateral,
+      order.currency,
+      order.status,
+    )
+  })
+
+  it("checks validation for closePosition", async () => {
     const nonFlaggedTokenOptions = {
       method: 'GET',
       url: 'https://api.reservoir.tools/oracle/tokens/status/v1?tokens=0x59468516a8259058baD1cA5F8f4BFF190d30E066%3A9',
       headers: {accept: '*/*', 'x-api-key': 'dyve-api-key'}
     };
     const { messages: [{ message: nonFlaggedMessage }] } = (await axios.request(nonFlaggedTokenOptions)).data
-    console.log("message: ", nonFlaggedMessage)
 
     const data = {
-      orderType: 0,
+      orderType: ETH_TO_ERC721,
       signer: owner.address,
       collection: lender.address,
       tokenId: 1,
