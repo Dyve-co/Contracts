@@ -6,10 +6,6 @@ use(require('chai-as-promised'))
 
 const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
 
-function range(size, startAt = 0) {
-  return [...Array(size).keys()].map(i => i + startAt);
-}
-
 let accounts;
 let owner;
 let addr1;

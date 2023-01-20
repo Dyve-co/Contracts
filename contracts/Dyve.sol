@@ -2,34 +2,39 @@
 pragma solidity ^0.8.16;
 
 // OZ libraries
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
-// Dyve Interfaces
+// Dyve interfaces/libraries/contracts
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
-import {IWETH} from "./interfaces/IWETH.sol";
+import {WhitelistedCurrencies} from "./WhitelistedCurrencies.sol";
+import {PremiumCollections} from "./PremiumCollections.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
   ReentrancyGuard,
-  Ownable,
-  EIP712("Dyve", "1")
+  EIP712("Dyve", "1"),
+  WhitelistedCurrencies,
+  PremiumCollections
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
   using ReservoirOracle for ReservoirOracle.Message;
 
   address public protocolFeeRecipient;
+  // ERC721 interfaceID
+  bytes4 public constant INTERFACE_ID_ERC721 = 0x80ac58cd;
+  // ERC1155 interfaceID
+  bytes4 public constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
 
-  mapping(address => uint256) public premiumCollections;
-  mapping(address => bool) public isCurrencyWhitelisted;
   mapping(address => uint256) public userMinOrderNonce;
   mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
   mapping(bytes32 => Order) public orders;
@@ -48,6 +53,7 @@ contract Dyve is
     address payable borrower;
     address collection;
     uint256 tokenId;
+    uint256 amount; // only applicable for ERC1155, set to 1 for ERC721
     uint256 expiryDateTime;
     uint256 collateral;
     address currency;
@@ -55,10 +61,6 @@ contract Dyve is
     OrderStatus status;
   }
 
-  event AddCurrencyToWhitelist(address indexed currency);
-  event RemoveCurrencyFromWhitelist(address indexed currency);
-  event AddPremiumCollection(address indexed collection, uint256 reducedFeeRate);
-  event RemovePremiumCollection(address indexed collection);
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
 
@@ -70,6 +72,7 @@ contract Dyve is
     address indexed maker,
     address collection,
     uint256 tokenId,
+    uint256 amount,
     uint256 collateral,
     uint256 fee,
     address currency,
@@ -84,7 +87,8 @@ contract Dyve is
     address indexed borrower, 
     address indexed lender, 
     address collection,
-    uint256 tokenId, 
+    uint256 tokenId,
+    uint256 amount,
     uint256 returnedTokenId,
     uint256 collateral,
     address currency,
@@ -98,6 +102,7 @@ contract Dyve is
     address indexed lender,
     address collection,
     uint256 tokenId,
+    uint256 amount,
     uint256 collateral,
     address currency,
     OrderStatus status
@@ -167,10 +172,22 @@ contract Dyve is
       IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
 
       _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
+    } else if (order.orderType == OrderType.ETH_TO_ERC1155) {
+      _createOrder(order, orderHash, order.signer, msg.sender);
+
+      IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId, order.amount, "");
+
+      _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
     } else if (order.orderType == OrderType.ERC20_TO_ERC721) {
       _createOrder(order, orderHash, order.signer, msg.sender);
 
       IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
+
+      _transferERC20(msg.sender, order.signer, order.fee, order.collateral, order.currency, order.premiumCollection, order.premiumTokenId); 
+    } else if (order.orderType == OrderType.ERC20_TO_ERC1155) {
+      _createOrder(order, orderHash, order.signer, msg.sender);
+
+      IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId, order.amount, "");
 
       _transferERC20(msg.sender, order.signer, order.fee, order.collateral, order.currency, order.premiumCollection, order.premiumTokenId); 
     } else if (order.orderType == OrderType.ERC721_TO_ERC20) {
@@ -179,6 +196,12 @@ contract Dyve is
       IERC721(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId);
 
       _transferERC20(order.signer, msg.sender, order.fee, order.collateral, order.currency, order.premiumCollection, order.premiumTokenId); 
+    } else if (order.orderType == OrderType.ERC1155_TO_ERC20) {
+      _createOrder(order, orderHash, msg.sender, order.signer);
+
+      IERC1155(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId, order.amount, "");
+
+      _transferERC20(order.signer, msg.sender, order.fee, order.collateral, order.currency, order.premiumCollection, order.premiumTokenId);
     }
 
     emit OrderFulfilled(
@@ -189,6 +212,7 @@ contract Dyve is
       order.signer,
       order.collection, 
       order.tokenId, 
+      order.amount,
       order.collateral, 
       order.fee, 
       order.currency, 
@@ -209,9 +233,14 @@ contract Dyve is
     Order storage order = orders[orderHash];
 
     require(order.borrower == msg.sender, "Order: Borrower must be the sender");
-    require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning ERC721 token");
     require(order.expiryDateTime > block.timestamp, "Order: Order expired");
     require(order.status == OrderStatus.BORROWED, "Order: Order is not borrowed");
+
+    if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)) {
+      require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning ERC721 token");
+    } else {
+      require(IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) >= order.amount, "Order: Borrower does not own the sufficient amount of ERC1155 tokens to return");
+    }
 
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
@@ -224,7 +253,11 @@ contract Dyve is
     order.status = OrderStatus.CLOSED;
 
     // 1. Transfer the NFT back to the lender
-    IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
+    if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)) {
+      IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
+    } else {
+      IERC1155(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId, order.amount, "");
+    }
 
     // 2. Transfer the collateral from dyve to the borrower
     if (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) {
@@ -241,6 +274,7 @@ contract Dyve is
       order.lender,
       order.collection,
       order.tokenId,
+      order.amount,
       returnTokenId,
       order.collateral,
       order.currency,
@@ -276,6 +310,7 @@ contract Dyve is
       order.lender,
       order.collection,
       order.tokenId,
+      order.amount,
       order.collateral,
       order.currency,
       order.status
@@ -299,6 +334,7 @@ contract Dyve is
       borrower: payable(borrower),
       collection: order.collection,
       tokenId: order.tokenId,
+      amount: order.amount,
       expiryDateTime: block.timestamp + order.duration,
       collateral: order.collateral,
       currency: order.currency,
@@ -316,7 +352,7 @@ contract Dyve is
   * @param lender Address of the lender
   */
   function _determineProtocolFee(uint256 fee, address collection, uint256 tokenId, address lender) internal view returns (uint256) {
-    uint256 protocolRate = 250;
+    uint256 protocolRate = 2000;
 
     // initial check of collection != address(0) should be more gas efficient than checking the mapping
     if (collection != address(0) && premiumCollections[collection] > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
@@ -382,47 +418,6 @@ contract Dyve is
   }
 
   /**
-  * @notice adds the specified currency to the list of supported currencies
-  * @param currency the address of the currency to be added
-  */
-  function addWhitelistedCurrency(address currency) external onlyOwner {
-    isCurrencyWhitelisted[currency] = true;
- 
-    emit AddCurrencyToWhitelist(currency);
-  }
-
-  /**
-  * @notice removes the specified currency from the list of supported currencies
-  * @param currency the address of the currency to be removed
-  */
-  function removeWhitelistedCurrency(address currency) external onlyOwner {
-    isCurrencyWhitelisted[currency] = false;
-    
-    emit RemoveCurrencyFromWhitelist(currency);
-  }
-
-  /**
-  * @notice adds the specified currency to the list of supported currencies
-  * @param collection the address of the collection to be added
-  * @param reducedFeeRate the reduced fee rate to be applied for lenders who hold an NFT from this collection
-  */
-  function addPremiumCollection(address collection, uint256 reducedFeeRate) external onlyOwner {
-    premiumCollections[collection] = reducedFeeRate;
-    
-    emit AddPremiumCollection(collection, reducedFeeRate);
-  }
-
-  /**
-  * @notice removes the specified currency from the list of supported currencies
-  * @param collection the address of the collection to be removed
-  */
-  function removePremiumCollection(address collection) external onlyOwner {
-    premiumCollections[collection] = 0;
-    
-    emit RemovePremiumCollection(collection);
-  }
-
-  /**
   * @notice Returns the domain separator for the current chain (EIP-712)
   */
   function DOMAIN_SEPARATOR() external view returns(bytes32) {
@@ -434,7 +429,7 @@ contract Dyve is
   * @param order the order to be verified
   * @param orderHash computed hash for the order
   */
-  function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view { // ReservoirOracle.Message calldata message
+  function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
       require(order.signer != address(0), "Order: Invalid signer");
 
@@ -453,7 +448,7 @@ contract Dyve is
       require(order.collateral > 0, "Order: collateral cannot be 0");
 
       // Verify that the currency is whitelisted
-      require(order.orderType == OrderType.ETH_TO_ERC721 || isCurrencyWhitelisted[order.currency], "Order: currency not whitelisted");
+      require(order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || isCurrencyWhitelisted[order.currency], "Order: currency not whitelisted");
 
       // Verify the validity of the signature
       require(
