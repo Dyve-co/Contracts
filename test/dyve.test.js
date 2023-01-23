@@ -21,10 +21,10 @@ let addrs;
 let protocolFeeRecipient;
 let weth;
 let mockUSDC;
-let mockERC721;
+let premiumCollection;
 let mockERC1155;
 let dyve;
-let lender;
+let mockERC721;
 
 before(async () => {
   try {
@@ -40,8 +40,8 @@ beforeEach(async function () {
   [owner, addr1, addr2, ...addrs] = accounts;
   protocolFeeRecipient = addr2;
 
-  [lender, weth, mockUSDC, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve] = await setup(protocolFeeRecipient)
-  await tokenSetup([owner, addr1, addr2], weth, mockUSDC, lender, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve)
+  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve] = await setup(protocolFeeRecipient)
+  await tokenSetup([owner, addr1, addr2], weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve)
 });
 
 describe("Dyve", function () {
@@ -60,7 +60,7 @@ describe("Dyve", function () {
         const data = {
           orderType: ETH_TO_ERC721,
           signer: owner.address,
-          collection: lender.address,
+          collection: mockERC721.address,
           tokenId: 1,
           amount: 1,
           duration: 10800,
@@ -91,7 +91,7 @@ describe("Dyve", function () {
         await expect(() => closeTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
         await expect(() => closeTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("1"));
 
-        await expect(lender.ownerOf(1)).to.eventually.equal(owner.address);
+        await expect(mockERC721.ownerOf(1)).to.eventually.equal(owner.address);
         expect(order.status).to.equal(2);
 
         await expect(closeTx)
@@ -184,7 +184,7 @@ describe("Dyve", function () {
         const data = {
           orderType: ERC20_TO_ERC721,
           signer: owner.address,
-          collection: lender.address,
+          collection: mockERC721.address,
           tokenId: 1,
           amount: 1,
           duration: 10800,
@@ -221,7 +221,7 @@ describe("Dyve", function () {
         await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.eq(ethers.utils.parseEther("0"));
         await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.eq(ethers.utils.parseEther(String(30 - 0.1)));
 
-        await expect(lender.ownerOf(1)).to.eventually.equal(owner.address);
+        await expect(mockERC721.ownerOf(1)).to.eventually.equal(owner.address);
         expect(order.status).to.equal(2);
 
         await expect(closeTx)
@@ -316,7 +316,7 @@ describe("Dyve", function () {
         const data = {
           orderType: ETH_TO_ERC721,
           signer: owner.address,
-          collection: lender.address,
+          collection: mockERC721.address,
           tokenId: 1,
           amount: 1,
           duration: 10800,
@@ -427,7 +427,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -453,7 +453,7 @@ describe("Dyve", function () {
 
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
 
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(() => borrowTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("1"));
       await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther("0.08"));
       await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther("0.02"));
@@ -571,7 +571,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -600,7 +600,7 @@ describe("Dyve", function () {
 
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
 
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
       await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
@@ -721,7 +721,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ERC721_TO_ERC20,
         signer: addr1.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -750,7 +750,7 @@ describe("Dyve", function () {
 
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
 
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
       await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
@@ -871,7 +871,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -933,7 +933,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 100,
@@ -987,7 +987,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -995,14 +995,14 @@ describe("Dyve", function () {
         fee: ethers.utils.parseEther("0.1").toString(),
         currency: mockUSDC.address,
         nonce: 100,
-        premiumCollection: mockERC721.address,
+        premiumCollection: premiumCollection.address,
         premiumTokenId: 1,
         startTime: Math.floor(Date.now() / 1000),
         endTime: Math.floor(Date.now() / 1000) + 86400,
         tokenFlaggingId: ethers.constants.HashZero,
       }
 
-      const mintTx = await mockERC721.mint();
+      const mintTx = await premiumCollection.mint();
       await mintTx.wait()
 
       const signature = await generateSignature(data, owner, dyve)
@@ -1014,7 +1014,7 @@ describe("Dyve", function () {
       const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
       await borrowTx.wait()
 
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
       await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
@@ -1026,7 +1026,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -1034,17 +1034,17 @@ describe("Dyve", function () {
         fee: ethers.utils.parseEther("0.1").toString(),
         currency: mockUSDC.address,
         nonce: 100,
-        premiumCollection: mockERC721.address,
+        premiumCollection: premiumCollection.address,
         premiumTokenId: 1,
         startTime: Math.floor(Date.now() / 1000),
         endTime: Math.floor(Date.now() / 1000) + 86400,
         tokenFlaggingId: ethers.constants.HashZero,
       }
 
-      const mintTx = await mockERC721.mint();
+      const mintTx = await premiumCollection.mint();
       await mintTx.wait()
 
-      const addPremiumCollectionTx = await premiumCollections.updatePremiumCollection(mockERC721.address, 100)
+      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(premiumCollection.address, 100)
       await addPremiumCollectionTx.wait()
 
       const signature = await generateSignature(data, owner, dyve)
@@ -1056,7 +1056,7 @@ describe("Dyve", function () {
       const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
       await borrowTx.wait()
 
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
       await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.99))));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
@@ -1068,49 +1068,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
-        tokenId: 1,
-        amount: 1,
-        duration: 10800,
-        collateral: ethers.utils.parseEther("1").toString(),
-        fee: ethers.utils.parseEther("0.1").toString(),
-        currency: mockUSDC.address,
-        nonce: 100,
-        premiumCollection: lender.address,
-        premiumTokenId: 1,
-        startTime: Math.floor(Date.now() / 1000),
-        endTime: Math.floor(Date.now() / 1000) + 86400,
-        tokenFlaggingId: ethers.constants.HashZero,
-      }
-
-      const mintTx = await mockERC721.mint();
-      await mintTx.wait()
-
-      const addPremiumCollectionTx = await premiumCollections.updatePremiumCollection(mockERC721.address, 100)
-      await addPremiumCollectionTx.wait()
-
-      const signature = await generateSignature(data, owner, dyve)
-      const makerOrder = { ...data, signature }
-
-      const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
-      await addCurrencyTx.wait()
-
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
-      await borrowTx.wait()
-
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
-      await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
-      await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
-    })
-
-
-    it("consumes maker ask (listing ERC721) with taker bid using USDC and the maker uses a premium collection, but does not own the specified token in the maker order", async () => {
-      const data = {
-        orderType: ERC20_TO_ERC721,
-        signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -1125,10 +1083,10 @@ describe("Dyve", function () {
         tokenFlaggingId: ethers.constants.HashZero,
       }
 
-      const mintTx = await mockERC721.connect(addr1).mint();
+      const mintTx = await premiumCollection.mint();
       await mintTx.wait()
 
-      const addPremiumCollectionTx = await premiumCollections.updatePremiumCollection(mockERC721.address, 100)
+      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(premiumCollection.address, 100)
       await addPremiumCollectionTx.wait()
 
       const signature = await generateSignature(data, owner, dyve)
@@ -1140,7 +1098,49 @@ describe("Dyve", function () {
       const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
       await borrowTx.wait()
 
-      await expect(lender.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+    })
+
+
+    it("consumes maker ask (listing ERC721) with taker bid using USDC and the maker uses a premium collection, but does not own the specified token in the maker order", async () => {
+      const data = {
+        orderType: ERC20_TO_ERC721,
+        signer: owner.address,
+        collection: mockERC721.address,
+        tokenId: 1,
+        amount: 1,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: mockUSDC.address,
+        nonce: 100,
+        premiumCollection: premiumCollection.address,
+        premiumTokenId: 1,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+        tokenFlaggingId: ethers.constants.HashZero,
+      }
+
+      const mintTx = await premiumCollection.connect(addr1).mint();
+      await mintTx.wait()
+
+      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(premiumCollection.address, 100)
+      await addPremiumCollectionTx.wait()
+
+      const signature = await generateSignature(data, owner, dyve)
+      const makerOrder = { ...data, signature }
+
+      const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
+      await addCurrencyTx.wait()
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      await borrowTx.wait()
+
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
       await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
@@ -1153,7 +1153,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 100,
@@ -1215,7 +1215,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 100,
@@ -1266,7 +1266,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -1311,7 +1311,7 @@ describe("Dyve", function () {
       const data = {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
-        collection: lender.address,
+        collection: mockERC721.address,
         tokenId: 1,
         amount: 1,
         duration: 10800,
@@ -1351,17 +1351,17 @@ describe("Dyve", function () {
 
   describe("Premium Collections Contract functionality", function () {
     it("adds and removes lender as a premium collection", async () => {
-      const addPremiumCollectionTx = await premiumCollections.updatePremiumCollection(lender.address, 1) 
+      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 1) 
       await addPremiumCollectionTx.wait()
 
-      await expect(premiumCollections.getFeeRate(lender.address)).to.be.eventually.equal(1)
-      await expect(addPremiumCollectionTx).to.emit(premiumCollections, "UpdatedPremiumCollection").withArgs(lender.address, 1)
+      await expect(protocolFeeManager.getFeeRate(mockERC721.address)).to.be.eventually.equal(1)
+      await expect(addPremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 1)
 
-      const removePremiumCollectionTx = await premiumCollections.updatePremiumCollection(lender.address, 0)
+      const removePremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 0)
       await removePremiumCollectionTx.wait()
 
-      await expect(premiumCollections.getFeeRate(lender.address)).to.be.eventually.equal(0)
-      await expect(removePremiumCollectionTx).to.emit(premiumCollections, "UpdatedPremiumCollection").withArgs(lender.address, 0)
+      await expect(protocolFeeManager.getFeeRate(mockERC721.address)).to.be.eventually.equal(0)
+      await expect(removePremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 0)
     })
   })
 

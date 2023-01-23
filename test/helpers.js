@@ -4,42 +4,42 @@ const { orderType, messageType } = require("./types")
 const { keccak256, defaultAbiCoder, parseEther } = ethers.utils;
 
 const setup = async (protocolFeeRecipient) => {
-  const Lender = await ethers.getContractFactory("LenderNft");
-  const lender = await Lender.deploy();
-  await lender.deployed();
-
   const WETH = await ethers.getContractFactory("WETH");
   const weth = await WETH.deploy();
   await weth.deployed();
 
-  const MockERC20 = await ethers.getContractFactory("MockERC20");
-  const mockUSDC = await MockERC20.deploy("USDC", "USDC");
+  const MockUSDC = await ethers.getContractFactory("MockERC20");
+  const mockUSDC = await MockUSDC.deploy("USDC", "USDC");
   await mockUSDC.deployed();
 
   const MockERC721 = await ethers.getContractFactory("MockERC721");
-  const mockERC721 = await MockERC721.deploy();
+  const mockERC721 = await MockERC721.deploy("mockERC721", "mockERC721");
   await mockERC721.deployed();
 
   const MockERC1155 = await ethers.getContractFactory("MockERC1155");
   const mockERC1155 = await MockERC1155.deploy();
   await mockERC1155.deployed();
 
+  const PremiumCollection = await ethers.getContractFactory("MockERC721");
+  const premiumCollection = await PremiumCollection.deploy("premiumCollection", "premiumCollection");
+  await premiumCollection.deployed();
+
   const WhitelistedCurrencies = await ethers.getContractFactory("WhitelistedCurrencies");
   const whitelistedCurrencies = await WhitelistedCurrencies.deploy();
   await whitelistedCurrencies.deployed();
 
-  const PremiumCollections = await ethers.getContractFactory("PremiumCollections");
-  const premiumCollections = await PremiumCollections.deploy();
-  await premiumCollections.deployed();
+  const ProtocolFeeManager = await ethers.getContractFactory("ProtocolFeeManager");
+  const protocolFeeManager = await ProtocolFeeManager.deploy(0);
+  await protocolFeeManager.deployed();
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, premiumCollections.address, protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
-  return [lender, weth, mockUSDC, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve];
+  return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve];
 } 
 
-const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, mockERC1155, whitelistedCurrencies, premiumCollections, dyve) => {
+const tokenSetup = async (users, weth, mockERC20, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve) => {
   await Promise.all(users.map(async (user, index) => {
     // Each user gets 30 WETH
     await weth.connect(user).deposit({ value: parseEther("30") });
@@ -54,10 +54,10 @@ const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, mockERC115
     await mockERC20.connect(user).approve(dyve.address, constants.MaxUint256);
 
     // Each user mints 1 ERC721 NFT
-    await lender.connect(user).mint();
+    await mockERC721.connect(user).mint();
 
     // Set approval for all tokens in lender collection
-    await lender.connect(user).setApprovalForAll(dyve.address, true);
+    await mockERC721.connect(user).setApprovalForAll(dyve.address, true);
 
     // Each user mints 10 ERC1155 NFT
     await mockERC1155.connect(user).mint(index, 10);
@@ -69,7 +69,7 @@ const tokenSetup = async (users, weth, mockERC20, lender, mockERC721, mockERC115
     await whitelistedCurrencies.addWhitelistedCurrency(weth.address);
 
     // Add premium mock ERC721 to collection whitelist
-    await premiumCollections.updatePremiumCollection(mockERC721.address, 1);
+    await protocolFeeManager.updateCollectionFeeRate(premiumCollection.address, 1);
   }))
 }
 

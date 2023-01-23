@@ -7,7 +7,7 @@ contract MockERC721 is ERC721 {
     event MintEvent(address indexed minter, uint256 tokenId);
     uint256 public counter = 0;
 
-    constructor() ERC721("MockERC721", "M721") {}
+    constructor(string memory _name, string memory _token) ERC721(_name, _token) {}
 
     function mint() public {
         counter += 1;
