@@ -430,6 +430,13 @@ contract Dyve is
   }
 
   /**
+  * @notice Returns the domain separator for the current chain (EIP-712)
+  */
+  function DOMAIN_SEPARATOR() external view returns(bytes32) {
+    return _domainSeparatorV4();
+  }
+
+  /**
   * @notice Verify the validity of the maker order
   * @param order the order to be verified
   * @param orderHash computed hash for the order

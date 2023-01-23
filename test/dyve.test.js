@@ -455,8 +455,8 @@ describe("Dyve", function () {
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(() => borrowTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("1"));
-      await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther("0.08"));
-      await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther("0.02"));
+      await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther("0.1"));
+      await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther("0"));
       await expect(() => borrowTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("-1.1"));
 
       expect(order.orderHash).to.equal(makerOrderHash);
@@ -492,7 +492,7 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") }))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
     })
 
     it("consumes maker ask (listing ERC1155) with taker bid using ETH", async () => {
@@ -527,8 +527,8 @@ describe("Dyve", function () {
 
       await expect(mockERC1155.balanceOf(addr1.address, 0)).to.eventually.equal(10);
       await expect(() => borrowTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("1"));
-      await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther("0.08"));
-      await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther("0.02"));
+      await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther("0.1"));
+      await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther("0"));
       await expect(() => borrowTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("-1.1"));
 
       expect(order.orderHash).to.equal(makerOrderHash);
@@ -564,7 +564,7 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") }))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
     })
 
     it("consumes maker ask (listing ERC721) with taker bid using USDC", async () => {
@@ -602,9 +602,9 @@ describe("Dyve", function () {
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
 
       expect(order.orderHash).to.equal(makerOrderHash);
       expect(order.orderType).to.equal(data.orderType);
@@ -639,7 +639,7 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.connect(addr1).fulfillOrder(makerOrder))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
     })
 
     it("consumes maker ask (listing ERC1155) with taker bid using USDC", async () => {
@@ -677,9 +677,9 @@ describe("Dyve", function () {
 
       await expect(mockERC1155.balanceOf(addr1.address, 0)).to.eventually.equal(10);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
 
       expect(order.orderHash).to.equal(makerOrderHash);
       expect(order.orderType).to.equal(data.orderType);
@@ -714,7 +714,7 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.connect(addr1).fulfillOrder(makerOrder))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
     })
 
     it("consumes maker bid (offer ERC721) with taker ask using USDC", async () => {
@@ -752,9 +752,9 @@ describe("Dyve", function () {
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
 
       expect(order.orderHash).to.equal(makerOrderHash);
       expect(order.orderType).to.equal(data.orderType);
@@ -789,7 +789,7 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.fulfillOrder(makerOrder))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
     })
 
     it("consumes maker bid (offer ERC1155) with taker ask using USDC", async () => {
@@ -827,9 +827,9 @@ describe("Dyve", function () {
 
       await expect(mockERC1155.balanceOf(addr1.address, 0)).to.eventually.equal(10);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
 
       expect(order.orderHash).to.equal(makerOrderHash);
       expect(order.orderType).to.equal(data.orderType);
@@ -864,7 +864,7 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.fulfillOrder(makerOrder))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
     })
 
     it("checks validation for fulfillOrder", async () => {
@@ -904,27 +904,27 @@ describe("Dyve", function () {
       // Signer is the zero address
       const zeroAddressMaker = { ...makerOrder, signer: ethers.constants.AddressZero }
       await expect(dyve.connect(addr1).fulfillOrder(zeroAddressMaker, { value: totalAmount }))
-        .to.be.rejectedWith("Order: Invalid signer")
+        .to.be.rejectedWith("InvalidSigner")
 
       // listing has expired
       const expiredListingMaker = { ...makerOrder, endTime: data.startTime - 100 }
       await expect(dyve.connect(addr1).fulfillOrder(expiredListingMaker, { value: totalAmount }))
-        .to.be.rejectedWith("Order: Order listing expired")
+        .to.be.rejectedWith("ExpiredListing")
 
       // fee is zero
       const feeZeroMaker = { ...makerOrder, fee: ethers.utils.parseEther("0").toString() }
       await expect(dyve.connect(addr1).fulfillOrder(feeZeroMaker, { value: ethers.utils.parseEther("1") }))
-        .to.be.rejectedWith("Order: fee cannot be 0")
+        .to.be.rejectedWith("InvalidFee")
 
       // collateral is zero
       const collateralZeroMaker = { ...makerOrder, collateral: ethers.utils.parseEther("0").toString() }
       await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, { value: ethers.utils.parseEther("0.1") }))
-        .to.be.rejectedWith("Order: collateral cannot be 0")
+        .to.be.rejectedWith("InvalidCollateral")
 
       // invalid signature
       const invalidSignatureMaker = { ...makerOrder, signature: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
       await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, { value: totalAmount }))
-        .to.be.rejectedWith("Signature: Invalid")
+        .to.be.rejectedWith("InvalidSignature")
     })
   })
 
@@ -1100,9 +1100,9 @@ describe("Dyve", function () {
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
     })
 
 
@@ -1142,9 +1142,9 @@ describe("Dyve", function () {
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8))));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
       await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
-      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.2))));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
     })
   })
 
@@ -1186,11 +1186,11 @@ describe("Dyve", function () {
 
       const order = await dyve.orders(makerOrderHash);
 
-      // 30 ETH + 1 ETH - (0.1 * 0.8) ETH
+      // 30 ETH + 1 ETH - 0.1 ETH
       // 30 = originally balance
       // 1 = collateral
-      // (0.1 * 0.8) = final lender fee after protocol fee cut
-      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + (0.1 * 0.8) + 1)))
+      // 0.1 = final lender fee after protocol fee cut
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1 + 1)))
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("0"))
       expect(order.status).to.equal(1);
 
@@ -1286,7 +1286,7 @@ describe("Dyve", function () {
 
       const totalAmount = ethers.utils.parseEther("1.1").toString();
       await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount }))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
 
       await expect(cancelTx)
       .to.emit(dyve, "CancelAllOrders")
@@ -1331,7 +1331,7 @@ describe("Dyve", function () {
 
       const totalAmount = ethers.utils.parseEther("1.1").toString();
       await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount }))
-        .to.be.rejectedWith("Order: Matching order listing expired")
+        .to.be.rejectedWith("ExpiredNonce")
 
       await expect(cancelTx)
       .to.emit(dyve, "CancelMultipleOrders")
@@ -1349,19 +1349,35 @@ describe("Dyve", function () {
     })
   })
 
-  describe("Premium Collections Contract functionality", function () {
-    it("adds and removes lender as a premium collection", async () => {
-      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 1) 
+  describe("Protocol Fee Manager Contract functionality", function () {
+    it("adds, adjusts and removes mockERC721 as a premium collection", async () => {
+      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 1)
       await addPremiumCollectionTx.wait()
 
-      await expect(protocolFeeManager.getFeeRate(mockERC721.address)).to.be.eventually.equal(1)
+      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 1, owner.address)).to.be.eventually.equal(0)
       await expect(addPremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 1)
 
       const removePremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 0)
       await removePremiumCollectionTx.wait()
 
-      await expect(protocolFeeManager.getFeeRate(mockERC721.address)).to.be.eventually.equal(0)
+      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 1, owner.address)).to.be.eventually.equal(0)
       await expect(removePremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 0)
+    })
+
+    it("sets mockERC721 to a non-zero rate", async () => {
+      const updatePremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 100)
+      await updatePremiumCollectionTx.wait()
+
+      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 1, owner.address)).to.be.eventually.equal(100)
+      await expect(updatePremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 100)
+    })
+
+    it("updates the protocol fee", async () => {
+      const updateProtocolFeeTx = await protocolFeeManager.updateProtocolFeeRate(100)
+      await updateProtocolFeeTx.wait()
+
+      await expect(protocolFeeManager.determineProtocolFeeRate(ethers.constants.AddressZero, 0, owner.address)).to.be.eventually.equal(100)
+      await expect(updateProtocolFeeTx).to.emit(protocolFeeManager, "UpdatedProtocolFeeRate").withArgs(100)
     })
   })
 

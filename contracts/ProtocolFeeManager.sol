@@ -16,6 +16,7 @@ contract ProtocolFeeManager is Ownable {
   mapping(address => uint256) public premiumCollections;
 
   event UpdatedCollectionFeeRate(address indexed collection, uint256 reducedFeeRate);
+  event UpdatedProtocolFeeRate(uint256 protocolFeeRate);
 
   constructor(uint256 _protocolFeeRate) {
     protocolFeeRate = _protocolFeeRate;
@@ -39,6 +40,8 @@ contract ProtocolFeeManager is Ownable {
   */
   function updateProtocolFeeRate(uint256 _protocolFeeRate) external onlyOwner {
     protocolFeeRate = _protocolFeeRate;
+
+    emit UpdatedProtocolFeeRate(_protocolFeeRate);
   }
 
   /** 
@@ -48,7 +51,7 @@ contract ProtocolFeeManager is Ownable {
   * @param tokenId token id of one of the potential premium collections
   * @param lender Address of the lender
   */
-  function determineProtocolFeeRate(address collection, uint256 tokenId, address lender) internal view returns (uint256) {
+  function determineProtocolFeeRate(address collection, uint256 tokenId, address lender) external view returns (uint256) {
     if (
       collection != address(0)
       && premiumCollections[collection] > 0
