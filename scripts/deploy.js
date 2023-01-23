@@ -12,13 +12,13 @@ async function main() {
   await whitelistedCurrencies.deployed();
   console.log("Whitelisted Currencies deployed: ", whitelistedCurrencies.address)
 
-  const PremiumCollections = await ethers.getContractFactory("PremiumCollections");
-  const premiumCollections = await PremiumCollections.deploy();
-  await premiumCollections.deployed();
-  console.log("Premium Collections deployed: ", premiumCollections.address)
+  const ProtocolFeeManager = await ethers.getContractFactory("ProtocolFeeManager");
+  const protocolFeeManager = await ProtocolFeeManager.deploy(0);
+  await protocolFeeManager.deployed();
+  console.log("Protocol Fee Manager deployed: ", protocolFeeManager.address)
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, premiumCollections.address, addresses.FEE_RECPIENT);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, addresses.FEE_RECPIENT);
   await dyve.deployed();
   console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);

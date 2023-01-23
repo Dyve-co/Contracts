@@ -19,7 +19,7 @@ library ReservoirOracle {
 
     error InvalidId();
     error InvalidTimestamp();
-    error InvalidSignature();
+    error InvalidSignatureLength();
     error InvalidMessage();
 
     // --- Fields ---
@@ -72,7 +72,7 @@ library ReservoirOracle {
                 v := byte(0, mload(add(signature, 0x60)))
             }
         } else {
-            revert InvalidSignature();
+            revert InvalidSignatureLength();
         }
 
         address signerAddress = ecrecover(

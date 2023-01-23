@@ -9,10 +9,11 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Dyve interfaces/libraries
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
-import {IPremiumCollections} from "./interfaces/IPremiumCollections.sol";
+import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
 
@@ -21,6 +22,7 @@ import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
  */
 contract Dyve is 
   ReentrancyGuard,
+  Ownable,
   EIP712("Dyve", "1")
 {
   using SafeERC20 for IERC20;
@@ -28,7 +30,7 @@ contract Dyve is
   using ReservoirOracle for ReservoirOracle.Message;
 
   IWhitelistedCurrencies public whitelistedCurrencies;
-  IPremiumCollections public premiumCollections;
+  IProtocolFeeManager public protocolFeeManager;
 
   address public protocolFeeRecipient;
   bytes4 public constant INTERFACE_ID_ERC721 = 0x80ac58cd;
@@ -59,6 +61,14 @@ contract Dyve is
     bytes32 tokenFlaggingId;
     OrderStatus status;
   }
+
+	error InvalidSigner();
+	error ExpiredListing();
+	error ExpiredNonce();
+	error InvalidFee();
+	error InvalidCollateral();
+	error InvalidCurrency();
+	error InvalidSignature();
 
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
@@ -109,11 +119,13 @@ contract Dyve is
 
   /**
     * @notice Constructor
-    * @param _protocolFeeRecipient protocol fee recipient
+    * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
+    * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
+    * @param _protocolFeeRecipient protocol fee recipient address
     */
-  constructor(address whitelistedCurrenciesAddress, address premiumCollectionsAddress, address _protocolFeeRecipient) {
+  constructor(address whitelistedCurrenciesAddress, address protocolFeeManagerAddress, address _protocolFeeRecipient) {
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
-    premiumCollections = IPremiumCollections(premiumCollectionsAddress);
+    protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
     protocolFeeRecipient = _protocolFeeRecipient;
   }
 
@@ -351,30 +363,6 @@ contract Dyve is
   }
 
   /** 
-  * @notice Determines the protocol fee to charge based on whether the lender owns an NFT from a premium collection
-  * @dev If the rate is set to 1, apply no fee
-  * @param fee Fee amount being transffered to Lender
-  * @param collection Collection address of one of the potential premium collections
-  * @param tokenId from one of the potential premium collections
-  * @param lender Address of the lender
-  */
-  function _determineProtocolFee(uint256 fee, address collection, uint256 tokenId, address lender) internal view returns (uint256) {
-    uint256 protocolRate = 2000;
-
-    // initial check of collection != address(0) should be more gas efficient than checking the mapping
-    if (collection != address(0) && premiumCollections.getFeeRate(collection) > 0 && IERC721(collection).ownerOf(tokenId) == lender) { 
-      uint256 premiumCollectionRate = premiumCollections.getFeeRate(collection);
-      if (premiumCollectionRate == 1) {
-        protocolRate = 0;
-      } else {
-        protocolRate = premiumCollectionRate;
-      }
-    }
-
-    return (fee * protocolRate) / 10000;
-  }
-
-  /** 
   * @notice Transfer fees and protocol fee to the Lender and procotol fee recipient respectively in ETH
   * @param to Address of recipient to receive the fees (Lender)
   * @param fee Fee amount being transffered to Lender
@@ -382,7 +370,7 @@ contract Dyve is
   * @param premiumTokenId TokenId from the premium collection
   */
   function _transferETH(address to, uint256 fee, address premiumCollection, uint256 premiumTokenId) internal {
-    uint256 protocolFee = _determineProtocolFee(fee, premiumCollection, premiumTokenId, to);
+    uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / 10000;
     bool success;
 
     // 1. Protocol fee transfer
@@ -413,7 +401,7 @@ contract Dyve is
     address premiumCollection,
     uint256 premiumTokenId
   ) internal {
-    uint256 protocolFee = _determineProtocolFee(fee, premiumCollection, premiumTokenId, to);
+    uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / 10000;
 
    // 1. Protocol fee transfer
     IERC20(currency).safeTransferFrom(from, protocolFeeRecipient, protocolFee);
@@ -426,10 +414,26 @@ contract Dyve is
   }
 
   /**
+  * @notice updates the ProtocolFeeManager instance
+  * @param _protocolFeeManager the address of the new ProtocolFeeManager
+  */
+  function updateProtocolFeeManager(address _protocolFeeManager) external onlyOwner {
+    protocolFeeManager = IProtocolFeeManager(_protocolFeeManager);
+  }
+
+  /**
+  * @notice updates the WhitelistedCurrencies instance
+  * @param _whitelistedCurrencies the address of the new WhitelistedCurrencies
+  */
+  function updateWhitelistedCurrencies(address _whitelistedCurrencies) external onlyOwner {
+    whitelistedCurrencies = IWhitelistedCurrencies(_whitelistedCurrencies);
+  }
+
+  /**
   * @notice Returns the domain separator for the current chain (EIP-712)
   */
   function DOMAIN_SEPARATOR() external view returns(bytes32) {
-      return _domainSeparatorV4();
+    return _domainSeparatorV4();
   }
 
   /**
@@ -439,33 +443,49 @@ contract Dyve is
   */
   function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
-      require(order.signer != address(0), "Order: Invalid signer");
+      if (order.signer == address(0)) {
+        revert InvalidSigner();
+      } 
 
       // Verify the order listing is not expired
-      require(order.endTime > block.timestamp, "Order: Order listing expired");
+      if (order.endTime <= block.timestamp) {
+        revert ExpiredListing();
+      }
 
       // Verify whether the nonce has expired
-      require(
-        (!_isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce]) &&
-          (order.nonce >= userMinOrderNonce[order.signer]),
-        "Order: Matching order listing expired"
-      );
+      if (
+        _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce]
+        || order.nonce < userMinOrderNonce[order.signer]
+      ) {
+        revert ExpiredNonce();
+      }
 
       // Verify the fee and collateral are not 0
-      require(order.fee > 0, "Order: fee cannot be 0");
-      require(order.collateral > 0, "Order: collateral cannot be 0");
+      if (order.fee == 0) {
+        revert InvalidFee();
+      }
+      if (order.collateral == 0) {
+        revert InvalidCollateral();
+      }
 
       // Verify that the currency is whitelisted
-      require(order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || whitelistedCurrencies.isCurrencyWhitelisted(order.currency), "Order: currency not whitelisted");
+      if (
+        order.orderType != OrderType.ETH_TO_ERC721
+        && order.orderType != OrderType.ETH_TO_ERC1155
+        && !(whitelistedCurrencies.isCurrencyWhitelisted(order.currency))
+      ) {
+        revert InvalidCurrency();
+      }
 
       // Verify the validity of the signature
-      require(
-          SignatureChecker.isValidSignatureNow(
+      if (
+          !(SignatureChecker.isValidSignatureNow(
               order.signer,
               orderHash,
               order.signature
-          ),
-          "Signature: Invalid"
-      );
+          ))
+      ) {
+        revert InvalidSignature();
+      }
   }
 }
