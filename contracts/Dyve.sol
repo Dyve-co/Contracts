@@ -62,6 +62,14 @@ contract Dyve is
     OrderStatus status;
   }
 
+	error InvalidSigner();
+	error ExpiredListing();
+	error ExpiredNonce();
+	error InvalidFee();
+	error InvalidCollateral();
+	error InvalidCurrency();
+	error InvalidSignature();
+
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
 
@@ -111,7 +119,9 @@ contract Dyve is
 
   /**
     * @notice Constructor
-    * @param _protocolFeeRecipient protocol fee recipient
+    * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
+    * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
+    * @param _protocolFeeRecipient protocol fee recipient address
     */
   constructor(address whitelistedCurrenciesAddress, address protocolFeeManagerAddress, address _protocolFeeRecipient) {
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
@@ -403,21 +413,21 @@ contract Dyve is
     IERC20(currency).safeTransferFrom(from, address(this), collateral);
   }
 
-  // /**
-  // * @notice updates the ProtocolFeeManager instance
-  // * @param _protocolFeeManager the address of the new ProtocolFeeManager
-  // */
-  // function updateProtocolFeeManager(address _protocolFeeManager) external onlyOwner {
-  //   protocolFeeManager = IProtocolFeeManager(_protocolFeeManager);
-  // }
+  /**
+  * @notice updates the ProtocolFeeManager instance
+  * @param _protocolFeeManager the address of the new ProtocolFeeManager
+  */
+  function updateProtocolFeeManager(address _protocolFeeManager) external onlyOwner {
+    protocolFeeManager = IProtocolFeeManager(_protocolFeeManager);
+  }
 
-  // /**
-  // * @notice updates the WhitelistedCurrencies instance
-  // * @param _whitelistedCurrencies the address of the new WhitelistedCurrencies
-  // */
-  // function updateWhitelistedCurrencies(address _whitelistedCurrencies) external onlyOwner {
-  //   whitelistedCurrencies = IWhitelistedCurrencies(_whitelistedCurrencies);
-  // }
+  /**
+  * @notice updates the WhitelistedCurrencies instance
+  * @param _whitelistedCurrencies the address of the new WhitelistedCurrencies
+  */
+  function updateWhitelistedCurrencies(address _whitelistedCurrencies) external onlyOwner {
+    whitelistedCurrencies = IWhitelistedCurrencies(_whitelistedCurrencies);
+  }
 
   /**
   * @notice Verify the validity of the maker order
@@ -426,33 +436,49 @@ contract Dyve is
   */
   function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
-      require(order.signer != address(0), "Order: Invalid signer");
+      if (order.signer == address(0)) {
+        revert InvalidSigner();
+      } 
 
       // Verify the order listing is not expired
-      require(order.endTime > block.timestamp, "Order: Order listing expired");
+      if (order.endTime <= block.timestamp) {
+        revert ExpiredListing();
+      }
 
       // Verify whether the nonce has expired
-      require(
-        (!_isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce]) &&
-          (order.nonce >= userMinOrderNonce[order.signer]),
-        "Order: Matching order listing expired"
-      );
+      if (
+        _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce]
+        || order.nonce < userMinOrderNonce[order.signer]
+      ) {
+        revert ExpiredNonce();
+      }
 
       // Verify the fee and collateral are not 0
-      require(order.fee > 0, "Order: fee cannot be 0");
-      require(order.collateral > 0, "Order: collateral cannot be 0");
+      if (order.fee == 0) {
+        revert InvalidFee();
+      }
+      if (order.collateral == 0) {
+        revert InvalidCollateral();
+      }
 
       // Verify that the currency is whitelisted
-      require(order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || whitelistedCurrencies.isCurrencyWhitelisted(order.currency), "Order: currency not whitelisted");
+      if (
+        order.orderType != OrderType.ETH_TO_ERC721
+        && order.orderType != OrderType.ETH_TO_ERC1155
+        && !(whitelistedCurrencies.isCurrencyWhitelisted(order.currency))
+      ) {
+        revert InvalidCurrency();
+      }
 
       // Verify the validity of the signature
-      require(
-          SignatureChecker.isValidSignatureNow(
+      if (
+          !(SignatureChecker.isValidSignatureNow(
               order.signer,
               orderHash,
               order.signature
-          ),
-          "Signature: Invalid"
-      );
+          ))
+      ) {
+        revert InvalidSignature();
+      }
   }
 }
