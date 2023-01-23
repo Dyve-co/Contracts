@@ -49,9 +49,9 @@ contract ProtocolFeeManager is Ownable {
   * @param lender Address of the lender
   */
   function determineProtocolFeeRate(address collection, uint256 tokenId, address lender) internal view returns (uint256) {
-    // if its not the zero address and the lender does own the NFT, apply the reduced fee rate
     if (
       collection != address(0)
+      && premiumCollections[collection] > 0
       && ((IERC165(collection).supportsInterface(INTERFACE_ID_ERC721) && IERC721(collection).ownerOf(tokenId) == lender)
       || (IERC165(collection).supportsInterface(INTERFACE_ID_ERC1155) && IERC1155(collection).balanceOf(lender, tokenId) > 0))
     ) { 
