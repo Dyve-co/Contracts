@@ -18,16 +18,16 @@ async function main() {
   console.log("Protocol Fee Manager deployed: ", protocolFeeManager.address)
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, addresses.FEE_RECPIENT);
-  await dyve.deployed();
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, addresses.FEE_RECIPIENT);
+  const tx = await dyve.deployTransaction.wait();
   console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);
 
-  const addWETHWhitelistTx = await dyve.addWhitelistedCurrency(addresses.WETH)
+  const addWETHWhitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(addresses.WETH)
   await addWETHWhitelistTx.wait()
   console.log("WETH added to whitelist")
 
-  const addUSDCWhitelistTx = await dyve.addWhitelistedCurrency(addresses.USDC)
+  const addUSDCWhitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(addresses.USDC)
   await addUSDCWhitelistTx.wait()
   console.log("USDC added to whitelist")
 }
