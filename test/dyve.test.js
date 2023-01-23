@@ -921,6 +921,11 @@ describe("Dyve", function () {
       await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, { value: ethers.utils.parseEther("0.1") }))
         .to.be.rejectedWith("InvalidCollateral")
 
+      // currency is not whitelisted
+      const nonWhitelistedCurrencyMaker = { ...makerOrder, currency: ethers.constants.AddressZero, orderType: ERC20_TO_ERC721 }
+      await expect(dyve.connect(addr1).fulfillOrder(nonWhitelistedCurrencyMaker))
+        .to.be.rejectedWith("InvalidCurrency")
+
       // invalid signature
       const invalidSignatureMaker = { ...makerOrder, signature: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
       await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, { value: totalAmount }))
@@ -1379,7 +1384,14 @@ describe("Dyve", function () {
       await expect(protocolFeeManager.determineProtocolFeeRate(ethers.constants.AddressZero, 0, owner.address)).to.be.eventually.equal(100)
       await expect(updateProtocolFeeTx).to.emit(protocolFeeManager, "UpdatedProtocolFeeRate").withArgs(100)
     })
-  })
+
+    it("updates the ProtocolFeeManager in the Dyve contract", async () => {
+      const tx = await dyve.updateProtocolFeeManager(ethers.constants.AddressZero)
+      await tx.wait()
+
+      await expect(tx).to.emit(dyve, "ProtocolFeeManagerUpdated").withArgs(ethers.constants.AddressZero)
+    })
+  })  
 
   describe("Whitelisted Currencies Contract functionality", function () {
     it("adds and removes USDC as a whitelisted currency", async () => {
@@ -1394,6 +1406,13 @@ describe("Dyve", function () {
 
       await expect(whitelistedCurrencies.isCurrencyWhitelisted(mockUSDC.address)).to.be.eventually.false
       await expect(removeWhitelistTx).to.emit(whitelistedCurrencies, "RemoveCurrencyFromWhitelist").withArgs(mockUSDC.address)
+    })
+
+    it("updates the WhitelistedCurrencies Contract functionality", async () => {
+      const tx = await dyve.updateWhitelistedCurrencies(ethers.constants.AddressZero)
+      await tx.wait()
+
+      await expect(tx).to.emit(dyve, "WhitelistedCurrenciesUpdated").withArgs(ethers.constants.AddressZero)
     })
   })
 })

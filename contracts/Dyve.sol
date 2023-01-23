@@ -72,6 +72,8 @@ contract Dyve is
 
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
+  event ProtocolFeeManagerUpdated(address indexed protocolFeeManagerAddress);
+  event WhitelistedCurrenciesUpdated(address indexed whitelistedCurrenciesAddress);
 
   event OrderFulfilled(
     bytes32 orderHash, // ask hash of the maker order
@@ -419,6 +421,8 @@ contract Dyve is
   */
   function updateProtocolFeeManager(address _protocolFeeManager) external onlyOwner {
     protocolFeeManager = IProtocolFeeManager(_protocolFeeManager);
+
+    emit ProtocolFeeManagerUpdated(_protocolFeeManager);
   }
 
   /**
@@ -427,6 +431,8 @@ contract Dyve is
   */
   function updateWhitelistedCurrencies(address _whitelistedCurrencies) external onlyOwner {
     whitelistedCurrencies = IWhitelistedCurrencies(_whitelistedCurrencies);
+
+    emit WhitelistedCurrenciesUpdated(_whitelistedCurrencies);
   }
 
   /**
