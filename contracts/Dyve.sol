@@ -58,10 +58,13 @@ contract Dyve is
     uint256 expiryDateTime;
     uint256 collateral;
     address currency;
-    bytes32 tokenFlaggingId;
     OrderStatus status;
   }
 
+  error InvalidMinNonce();
+  error EmptyNonceArray();
+  error InvalidNonce();
+  error InvalidMsgValue();
 	error InvalidSigner();
 	error ExpiredListing();
 	error ExpiredNonce();
@@ -136,8 +139,12 @@ contract Dyve is
   * @param minNonce minimum user nonce
   */
   function cancelAllOrdersForSender(uint256 minNonce) external {
-    require(minNonce > userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
-    require(minNonce < userMinOrderNonce[msg.sender] + 500000, "Cancel: Cannot cancel more orders");
+    if (minNonce > userMinOrderNonce[msg.sender]) {
+      revert InvalidMinNonce();
+    }
+    if (minNonce < userMinOrderNonce[msg.sender] + 500000) {
+      revert EmptyNonceArray();
+    }
     userMinOrderNonce[msg.sender] = minNonce;
 
     emit CancelAllOrders(msg.sender, minNonce);
@@ -148,10 +155,14 @@ contract Dyve is
   * @param orderNonces array of order nonces
   */
   function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
-    require(orderNonces.length > 0, "Cancel: Cannot be empty");
+    if (orderNonces.length > 0) {
+      revert EmptyNonceArray();
+    }
 
     for (uint256 i = 0; i < orderNonces.length; i++) {
-      require(orderNonces[i] >= userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
+      if (orderNonces[i] >= userMinOrderNonce[msg.sender]) {
+        revert InvalidNonce();
+      }
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
     }
 
@@ -167,14 +178,18 @@ contract Dyve is
       payable
       nonReentrant
   {
-    require(
-      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155) || msg.value == (order.fee + order.collateral),
-      "Order: Incorrect amount of ETH sent"
-    );
-    require(
-      order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || msg.value == 0, 
-      "Order: ETH sent for an ERC20 type transaction"
-    );
+    if(
+      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155) 
+      || msg.value == (order.fee + order.collateral)
+    ) {
+      revert InvalidMsgValue();
+    }
+    if(
+      order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 
+      || msg.value == 0
+    ) {
+      revert InvalidMsgValue();
+    }
 
     // Check the maker ask order
     bytes32 orderHash = order.hash();
@@ -265,10 +280,13 @@ contract Dyve is
 
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
-    if (!ReservoirOracle._verifyMessage(order.tokenFlaggingId, maxMessageAge, message)) {
+    if (!ReservoirOracle._verifyMessage(maxMessageAge, message)) {
         revert ReservoirOracle.InvalidMessage();
     }
-    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
+    (bool flaggedStatus, /*address collection, uint256 tokenId*/) = abi.decode(message.payload, (bool, /*address, uint256,*/ uint256)); 
+    // TODO: implement this in once they reservoir updates the oracle
+    // require(collection == order.collection, "Order: Collection does not match message");
+    // require(tokenId == returnTokenId, "Order: Token ID does not match message");
     require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 
     order.status = OrderStatus.CLOSED;
@@ -359,7 +377,6 @@ contract Dyve is
       expiryDateTime: block.timestamp + order.duration,
       collateral: order.collateral,
       currency: order.currency,
-      tokenFlaggingId: order.tokenFlaggingId,
       status: OrderStatus.BORROWED
     });
   }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.16;
 import "hardhat/console.sol";
 
 // Inspired by https://github.com/ZeframLou/trustus
-library ReservoirOracle {
+contract Oracle {
     // --- Structs ---
 
     struct Message {
@@ -24,21 +24,26 @@ library ReservoirOracle {
 
     // --- Fields ---
 
-    address private constant RESERVOIR_ORACLE_ADDRESS = 0x32dA57E736E05f75aa4FaE2E9Be60FD904492726;
+    // address private constant RESERVOIR_ORACLE_ADDRESS = 0x32dA57E736E05f75aa4FaE2E9Be60FD904492726;
+    address private immutable RESERVOIR_ORACLE_ADDRESS;
+
+    constructor(address _address) {
+        RESERVOIR_ORACLE_ADDRESS = _address;
+    }
 
     // --- Internal methods ---
 
-    function _verifyMessage(
-        uint256 validFor,
+    function verifyMessage(
+        // uint256 validFor,
         Message memory message
-    ) internal view returns (bool success) {
+    ) external pure returns (address) {
         // Ensure the message timestamp is valid
-        if (
-            message.timestamp > block.timestamp ||
-            message.timestamp + validFor < block.timestamp
-        ) {
-            revert InvalidTimestamp();
-        }
+        // if (
+        //     message.timestamp > block.timestamp ||
+        //     message.timestamp + validFor < block.timestamp
+        // ) {
+        //     revert InvalidTimestamp();
+        // }
 
         bytes32 r;
         bytes32 s;
@@ -92,6 +97,6 @@ library ReservoirOracle {
         );
 
         // Ensure the signer matches the designated oracle address
-        return signerAddress == RESERVOIR_ORACLE_ADDRESS;
+        return signerAddress;
     }
 }

@@ -72,7 +72,6 @@ describe("Dyve", function () {
           premiumTokenId: 0,
           startTime: Math.floor(Date.now() / 1000),
           endTime: Math.floor(Date.now() / 1000) + 86400,
-          tokenFlaggingId: message.id,
         }
 
         const signature = await generateSignature(data, owner, dyve)
@@ -83,7 +82,7 @@ describe("Dyve", function () {
         await borrowTx.wait();
 
         const makerOrderHash = computeOrderHash(data);
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 2, message);
         await closeTx.wait();
 
         const order = await dyve.orders(makerOrderHash)
@@ -207,10 +206,6 @@ describe("Dyve", function () {
 
         const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
         await borrowTx.wait();
-
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // await network.provider.send("evm_setNextBlockTimestamp", [timestamp + 10]); 
-        // await network.provider.send("evm_mine");
 
         const makerOrderHash = computeOrderHash(data);
         const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
