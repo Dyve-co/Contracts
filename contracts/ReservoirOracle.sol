@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
-import "hardhat/console.sol";
 
 // Inspired by https://github.com/ZeframLou/trustus
-contract Oracle {
+abstract contract ReservoirOracle {
     // --- Structs ---
 
     struct Message {
@@ -24,36 +23,33 @@ contract Oracle {
 
     // --- Fields ---
 
-    // address private constant RESERVOIR_ORACLE_ADDRESS = 0x32dA57E736E05f75aa4FaE2E9Be60FD904492726;
-    address private immutable RESERVOIR_ORACLE_ADDRESS;
+    address public RESERVOIR_ORACLE_ADDRESS;
 
-    constructor(address _address) {
-        RESERVOIR_ORACLE_ADDRESS = _address;
+    // --- Constructor ---
+
+    constructor(address reservoirOracleAddress) {
+        RESERVOIR_ORACLE_ADDRESS = reservoirOracleAddress;
     }
 
     // --- Internal methods ---
 
-    function hashStruct(address collection, uint256 tokenId) external pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                keccak256("Token(address contract,uint256 tokenId)"),
-                collection,
-                tokenId
-            )
-        );
-    }
-
-    function verifyMessage(
-        // uint256 validFor,
+    function _verifyMessage(
+        bytes32 id,
+        uint256 validFor,
         Message memory message
-    ) external pure returns (address) {
+    ) internal view returns (bool success) {
+        // Ensure the message matches the requested id
+        if (id != message.id) {
+            revert InvalidId();
+        }
+
         // Ensure the message timestamp is valid
-        // if (
-        //     message.timestamp > block.timestamp ||
-        //     message.timestamp + validFor < block.timestamp
-        // ) {
-        //     revert InvalidTimestamp();
-        // }
+        if (
+            message.timestamp > block.timestamp ||
+            message.timestamp + validFor < block.timestamp
+        ) {
+            revert InvalidTimestamp();
+        }
 
         bytes32 r;
         bytes32 s;
@@ -107,6 +103,6 @@ contract Oracle {
         );
 
         // Ensure the signer matches the designated oracle address
-        return signerAddress;
+        return signerAddress == RESERVOIR_ORACLE_ADDRESS;
     }
 }

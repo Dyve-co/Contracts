@@ -11,23 +11,23 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-// Dyve interfaces/libraries
+// Dyve contacts/interfaces/libraries
+import {ReservoirOracle} from "./ReservoirOracle.sol";
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
-import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
+  ReservoirOracle,
   ReentrancyGuard,
   Ownable,
   EIP712("Dyve", "1")
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
-  using ReservoirOracle for ReservoirOracle.Message;
 
   IWhitelistedCurrencies public whitelistedCurrencies;
   IProtocolFeeManager public protocolFeeManager;
@@ -126,9 +126,15 @@ contract Dyve is
     * @notice Constructor
     * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
     * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
+    * @param reservoirOracleAddress address of the Reservoir Oracle
     * @param _protocolFeeRecipient protocol fee recipient address
     */
-  constructor(address whitelistedCurrenciesAddress, address protocolFeeManagerAddress, address _protocolFeeRecipient) {
+  constructor(
+    address whitelistedCurrenciesAddress, 
+    address protocolFeeManagerAddress, 
+    address reservoirOracleAddress, 
+    address _protocolFeeRecipient
+  ) ReservoirOracle(reservoirOracleAddress) {
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
     protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
     protocolFeeRecipient = _protocolFeeRecipient;
@@ -284,7 +290,7 @@ contract Dyve is
     if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
         revert ReservoirOracle.InvalidMessage();
     }
-    (bool flaggedStatus, /*address collection, uint256 tokenId*/) = abi.decode(message.payload, (bool, /*address, uint256,*/ uint256)); 
+    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
     require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 
     order.status = OrderStatus.CLOSED;
