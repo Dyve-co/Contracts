@@ -18,7 +18,12 @@ async function main() {
   console.log("Protocol Fee Manager deployed: ", protocolFeeManager.address)
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, addresses.FEE_RECIPIENT);
+  const dyve = await Dyve.deploy(
+    whitelistedCurrencies.address, 
+    protocolFeeManager.address, 
+    '0xAeB1D03929bF87F69888f381e73FBf75753d75AF', 
+    addresses.FEE_RECIPIENT
+  );
   const tx = await dyve.deployTransaction.wait();
   console.log("block number: ", tx.blockNumber);
   console.log("Dyve Deployed:", dyve.address);

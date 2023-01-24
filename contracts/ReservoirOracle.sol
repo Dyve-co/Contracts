@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
-import "hardhat/console.sol";
 
 // Inspired by https://github.com/ZeframLou/trustus
-library ReservoirOracle {
+abstract contract ReservoirOracle {
     // --- Structs ---
 
     struct Message {
@@ -24,7 +23,13 @@ library ReservoirOracle {
 
     // --- Fields ---
 
-    address private constant RESERVOIR_ORACLE_ADDRESS = 0x32dA57E736E05f75aa4FaE2E9Be60FD904492726;
+    address public RESERVOIR_ORACLE_ADDRESS;
+
+    // --- Constructor ---
+
+    constructor(address reservoirOracleAddress) {
+        RESERVOIR_ORACLE_ADDRESS = reservoirOracleAddress;
+    }
 
     // --- Internal methods ---
 

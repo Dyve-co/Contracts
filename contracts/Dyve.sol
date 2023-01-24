@@ -11,23 +11,23 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-// Dyve interfaces/libraries
+// Dyve contacts/interfaces/libraries
+import {ReservoirOracle} from "./ReservoirOracle.sol";
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
-import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
+  ReservoirOracle,
   ReentrancyGuard,
   Ownable,
   EIP712("Dyve", "1")
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
-  using ReservoirOracle for ReservoirOracle.Message;
 
   IWhitelistedCurrencies public whitelistedCurrencies;
   IProtocolFeeManager public protocolFeeManager;
@@ -58,10 +58,13 @@ contract Dyve is
     uint256 expiryDateTime;
     uint256 collateral;
     address currency;
-    bytes32 tokenFlaggingId;
     OrderStatus status;
   }
 
+  error InvalidMinNonce();
+  error EmptyNonceArray();
+  error InvalidNonce();
+  error InvalidMsgValue();
 	error InvalidSigner();
 	error ExpiredListing();
 	error ExpiredNonce();
@@ -123,9 +126,15 @@ contract Dyve is
     * @notice Constructor
     * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
     * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
+    * @param reservoirOracleAddress address of the Reservoir Oracle
     * @param _protocolFeeRecipient protocol fee recipient address
     */
-  constructor(address whitelistedCurrenciesAddress, address protocolFeeManagerAddress, address _protocolFeeRecipient) {
+  constructor(
+    address whitelistedCurrenciesAddress, 
+    address protocolFeeManagerAddress, 
+    address reservoirOracleAddress, 
+    address _protocolFeeRecipient
+  ) ReservoirOracle(reservoirOracleAddress) {
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
     protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
     protocolFeeRecipient = _protocolFeeRecipient;
@@ -136,8 +145,12 @@ contract Dyve is
   * @param minNonce minimum user nonce
   */
   function cancelAllOrdersForSender(uint256 minNonce) external {
-    require(minNonce > userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
-    require(minNonce < userMinOrderNonce[msg.sender] + 500000, "Cancel: Cannot cancel more orders");
+    if (minNonce <= userMinOrderNonce[msg.sender]) {
+      revert InvalidMinNonce();
+    }
+    if (minNonce >= userMinOrderNonce[msg.sender] + 500000) {
+      revert InvalidMinNonce();
+    }
     userMinOrderNonce[msg.sender] = minNonce;
 
     emit CancelAllOrders(msg.sender, minNonce);
@@ -148,10 +161,14 @@ contract Dyve is
   * @param orderNonces array of order nonces
   */
   function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
-    require(orderNonces.length > 0, "Cancel: Cannot be empty");
+    if (orderNonces.length == 0) {
+      revert EmptyNonceArray();
+    }
 
     for (uint256 i = 0; i < orderNonces.length; i++) {
-      require(orderNonces[i] >= userMinOrderNonce[msg.sender], "Cancel: Order nonce lower than current");
+      if (orderNonces[i] < userMinOrderNonce[msg.sender]) {
+        revert InvalidNonce();
+      }
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
     }
 
@@ -167,14 +184,18 @@ contract Dyve is
       payable
       nonReentrant
   {
-    require(
-      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155) || msg.value == (order.fee + order.collateral),
-      "Order: Incorrect amount of ETH sent"
-    );
-    require(
-      order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 || msg.value == 0, 
-      "Order: ETH sent for an ERC20 type transaction"
-    );
+    if(
+      (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) 
+      && msg.value != (order.fee + order.collateral)
+    ) {
+      revert InvalidMsgValue();
+    }
+    if(
+      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155)
+      && msg.value != 0
+    ) {
+      revert InvalidMsgValue();
+    }
 
     // Check the maker ask order
     bytes32 orderHash = order.hash();
@@ -265,7 +286,8 @@ contract Dyve is
 
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
-    if (!ReservoirOracle._verifyMessage(order.tokenFlaggingId, maxMessageAge, message)) {
+    bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
+    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
         revert ReservoirOracle.InvalidMessage();
     }
     (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
@@ -359,7 +381,6 @@ contract Dyve is
       expiryDateTime: block.timestamp + order.duration,
       collateral: order.collateral,
       currency: order.currency,
-      tokenFlaggingId: order.tokenFlaggingId,
       status: OrderStatus.BORROWED
     });
   }

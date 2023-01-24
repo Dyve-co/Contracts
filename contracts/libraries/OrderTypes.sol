@@ -34,7 +34,6 @@ library OrderTypes {
         uint256 premiumTokenId; // premium token id
         uint256 nonce; // order nonce (must be unique unless new maker order is meant to override existing one e.g., lower ask price)
         uint256 endTime; // time when the order expires in epoch seconds
-        bytes32 tokenFlaggingId; // Reservoir id for the token flagging oracle
         bytes signature; // signature of the maker order
     }
 

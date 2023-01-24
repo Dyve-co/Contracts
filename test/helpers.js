@@ -1,9 +1,9 @@
 const { ethers } = require('hardhat')
 const { constants } = require('ethers')
 const { orderType, messageType } = require("./types")
-const { keccak256, defaultAbiCoder, parseEther } = ethers.utils;
+const { solidityKeccak256, keccak256, defaultAbiCoder, parseEther, _TypedDataEncoder, arrayify } = ethers.utils;
 
-const setup = async (protocolFeeRecipient) => {
+const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   const WETH = await ethers.getContractFactory("WETH");
   const weth = await WETH.deploy();
   await weth.deployed();
@@ -33,7 +33,7 @@ const setup = async (protocolFeeRecipient) => {
   await protocolFeeManager.deployed();
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracleSigner.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
   return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve];
@@ -144,10 +144,40 @@ const computeOrderHash = (order) => {
   return keccak256(defaultAbiCoder.encode(types, values));
 }
 
+const constructMessage = async ({ contract, tokenId, isFlagged, timestamp, signer }) => {
+  const tokenType = {
+    Token: [
+      { name: "contract", type: "address" },
+      { name: "tokenId", type: "uint256" },
+    ],
+  }
+  const id = _TypedDataEncoder.hashStruct("Token", tokenType, {
+    contract,
+    tokenId, 
+  });
+  const payload = defaultAbiCoder.encode(['bool', 'uint256'], [isFlagged, 100])
+
+  const messageHash = solidityKeccak256(
+    ["bytes32", "bytes32", "bytes", "uint256"],
+    [
+      solidityKeccak256(['string'], ["Message(bytes32 id,bytes payload,uint256 timestamp)"]),
+      id,
+      solidityKeccak256(['bytes'], [payload]),
+      timestamp,
+    ]
+  )
+  const messageHashBinary = arrayify(messageHash)
+  const signature = await signer.signMessage(messageHashBinary)
+  const message = { id, payload, timestamp, signature }
+
+  return message
+}
+
 module.exports = {
   setup,
   tokenSetup,
   generateSignature,
   generateOracleSignature,
   computeOrderHash,
+  constructMessage,
 }
