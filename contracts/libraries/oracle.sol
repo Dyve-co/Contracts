@@ -33,6 +33,16 @@ contract Oracle {
 
     // --- Internal methods ---
 
+    function hashStruct(address collection, uint256 tokenId) external pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256("Token(address contract,uint256 tokenId)"),
+                collection,
+                tokenId
+            )
+        );
+    }
+
     function verifyMessage(
         // uint256 validFor,
         Message memory message

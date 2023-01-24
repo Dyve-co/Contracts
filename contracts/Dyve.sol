@@ -139,11 +139,11 @@ contract Dyve is
   * @param minNonce minimum user nonce
   */
   function cancelAllOrdersForSender(uint256 minNonce) external {
-    if (minNonce > userMinOrderNonce[msg.sender]) {
+    if (minNonce <= userMinOrderNonce[msg.sender]) {
       revert InvalidMinNonce();
     }
-    if (minNonce < userMinOrderNonce[msg.sender] + 500000) {
-      revert EmptyNonceArray();
+    if (minNonce >= userMinOrderNonce[msg.sender] + 500000) {
+      revert InvalidMinNonce();
     }
     userMinOrderNonce[msg.sender] = minNonce;
 
@@ -155,12 +155,12 @@ contract Dyve is
   * @param orderNonces array of order nonces
   */
   function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
-    if (orderNonces.length > 0) {
+    if (orderNonces.length == 0) {
       revert EmptyNonceArray();
     }
 
     for (uint256 i = 0; i < orderNonces.length; i++) {
-      if (orderNonces[i] >= userMinOrderNonce[msg.sender]) {
+      if (orderNonces[i] < userMinOrderNonce[msg.sender]) {
         revert InvalidNonce();
       }
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
@@ -179,14 +179,14 @@ contract Dyve is
       nonReentrant
   {
     if(
-      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155) 
-      || msg.value == (order.fee + order.collateral)
+      (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) 
+      && msg.value != (order.fee + order.collateral)
     ) {
       revert InvalidMsgValue();
     }
     if(
-      order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155 
-      || msg.value == 0
+      (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155)
+      && msg.value != 0
     ) {
       revert InvalidMsgValue();
     }
@@ -280,13 +280,11 @@ contract Dyve is
 
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
-    if (!ReservoirOracle._verifyMessage(maxMessageAge, message)) {
+    bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
+    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
         revert ReservoirOracle.InvalidMessage();
     }
     (bool flaggedStatus, /*address collection, uint256 tokenId*/) = abi.decode(message.payload, (bool, /*address, uint256,*/ uint256)); 
-    // TODO: implement this in once they reservoir updates the oracle
-    // require(collection == order.collection, "Order: Collection does not match message");
-    // require(tokenId == returnTokenId, "Order: Token ID does not match message");
     require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 
     order.status = OrderStatus.CLOSED;

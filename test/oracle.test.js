@@ -1,11 +1,11 @@
 const { expect, use } = require("chai")
 const { ethers } = require("hardhat")
-const axios = require('axios')
+// const axios = require('axios')
 const { setup, tokenSetup, generateSignature, computeOrderHash } = require("./helpers");
 const { isCallTrace } = require("hardhat/internal/hardhat-network/stack-traces/message-trace");
 use(require('chai-as-promised'))
 
-const { solidityKeccak256, arrayify, keccak256, defaultAbiCoder } = ethers.utils;
+const { solidityKeccak256, arrayify, keccak256, defaultAbiCoder, _TypedDataEncoder} = ethers.utils;
 
 const message = {
   token: "0x59468516a8259058baD1cA5F8f4BFF190d30E066:9",
@@ -19,6 +19,26 @@ const message = {
   }
 }
 
+// const dsa = _TypedDataEncoder.hash('TOKEN', )
+// const asd = solidityKeccak256(
+//   ['address', 'uint256'], 
+//   ['0x59468516a8259058baD1cA5F8f4BFF190d30E066', 9],
+// )
+// const types = solidityKeccak256(['string', 'string'], [''])
+// console.log("hash: ", asd)
+
+const tokenType = {
+  Token: [
+    { name: "contract", type: "address" },
+    { name: "tokenId", type: "uint256" },
+  ],
+}
+
+const id = _TypedDataEncoder.hashStruct("Token", tokenType, {
+  contract: '0x59468516a8259058baD1cA5F8f4BFF190d30E066',
+  tokenId: 9,
+});
+
 describe("Dyve", function () {
   it("test", async () => {
     const [signer] = await ethers.getSigners()
@@ -27,24 +47,27 @@ describe("Dyve", function () {
     const Oracle = await ethers.getContractFactory("Oracle")
     const oracle = await Oracle.deploy(signer.address)
 
-    const messageHash = solidityKeccak256(
-      ["bytes32", "bytes32", "bytes", "uint256"],
-      [
-        solidityKeccak256(['string'], ["Message(bytes32 id,bytes payload,uint256 timestamp)"]),
-        message.message.id,
-        solidityKeccak256(['bytes'], [payload]),
-        // payload
-        message.message.timestamp
-      ]
-    )
-    const messageHashBinary = arrayify(messageHash)
-    // console.log("message hash binary: ", messageHashBinary)
+    const id = await oracle.hashStruct('0x59468516a8259058baD1cA5F8f4BFF190d30E066', 9)
+    console.log("id: ", id)
 
-    const signature = await signer.signMessage(messageHashBinary)
-    // console.log("signature made: ", signature)
+  //   const messageHash = solidityKeccak256(
+  //     ["bytes32", "bytes32", "bytes", "uint256"],
+  //     [
+  //       solidityKeccak256(['string'], ["Message(bytes32 id,bytes payload,uint256 timestamp)"]),
+  //       message.message.id,
+  //       solidityKeccak256(['bytes'], [payload]),
+  //       // payload
+  //       message.message.timestamp
+  //     ]
+  //   )
+  //   const messageHashBinary = arrayify(messageHash)
+  //   // console.log("message hash binary: ", messageHashBinary)
 
-    const addressReturned = await oracle.verifyMessage({ ...message.message, signature })
-    console.log("address returned: ", addressReturned)
-    console.log("signer address: ", signer.address)
+  //   const signature = await signer.signMessage(messageHashBinary)
+  //   // console.log("signature made: ", signature)
+
+  //   const addressReturned = await oracle.verifyMessage({ ...message.message, signature })
+  //   console.log("address returned: ", addressReturned)
+  //   console.log("signer address: ", signer.address)
   })
 })
