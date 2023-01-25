@@ -805,17 +805,17 @@ describe("Dyve", function () {
         const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
         await borrowTx.wait();
 
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // const message = await constructMessage({ 
-        //   contract: mockERC721.address, 
-        //   tokenId: 2, 
-        //   isFlagged: false,
-        //   timestamp: timestamp - 10, 
-        //   signer: reservoirOracleSigner 
-        // })
+        const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
+        const message = await constructMessage({ 
+          contract: mockERC721.address, 
+          tokenId: 2, 
+          isFlagged: false,
+          timestamp: timestamp - 10, 
+          signer: reservoirOracleSigner 
+        })
 
         const makerOrderHash = computeOrderHash(data);
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 2); //message);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 2, message);
         await closeTx.wait();
 
         const order = await dyve.orders(makerOrderHash)
@@ -868,17 +868,17 @@ describe("Dyve", function () {
         const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
         await borrowTx.wait();
 
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // const message = await constructMessage({ 
-        //   contract: mockERC1155.address, 
-        //   tokenId: 1, 
-        //   isFlagged: false,
-        //   timestamp: timestamp - 10, 
-        //   signer: reservoirOracleSigner 
-        // })
+        const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
+        const message = await constructMessage({ 
+          contract: mockERC1155.address, 
+          tokenId: 1, 
+          isFlagged: false,
+          timestamp: timestamp - 10, 
+          signer: reservoirOracleSigner 
+        })
 
         const makerOrderHash = computeOrderHash(data);
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 1); //, message);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 1, message);
         await closeTx.wait();
 
         const order = await dyve.orders(makerOrderHash)
@@ -933,17 +933,17 @@ describe("Dyve", function () {
         const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
         await borrowTx.wait();
 
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // const message = await constructMessage({ 
-        //   contract: mockERC721.address,
-        //   tokenId: data.tokenId,
-        //   isFlagged: false,
-        //   timestamp: timestamp - 10,
-        //   signer: reservoirOracleSigner
-        // })
+        const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
+        const message = await constructMessage({ 
+          contract: mockERC721.address,
+          tokenId: data.tokenId,
+          isFlagged: false,
+          timestamp: timestamp - 10,
+          signer: reservoirOracleSigner
+        })
 
         const makerOrderHash = computeOrderHash(data);
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId); //, message);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
         await closeTx.wait();
 
         const order = await dyve.orders(makerOrderHash)
@@ -998,17 +998,17 @@ describe("Dyve", function () {
         const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
         await borrowTx.wait();
 
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // const message = await constructMessage({ 
-        //   contract: mockERC1155.address,
-        //   tokenId: data.tokenId,
-        //   isFlagged: false,
-        //   timestamp: timestamp - 10,
-        //   signer: reservoirOracleSigner
-        // })
+        const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
+        const message = await constructMessage({ 
+          contract: mockERC1155.address,
+          tokenId: data.tokenId,
+          isFlagged: false,
+          timestamp: timestamp - 10,
+          signer: reservoirOracleSigner
+        })
 
         const makerOrderHash = computeOrderHash(data);
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId); //, message);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, message);
         await closeTx.wait();
 
         const order = await dyve.orders(makerOrderHash)
@@ -1063,47 +1063,47 @@ describe("Dyve", function () {
 
         const makerOrderHash = computeOrderHash(data);
 
-        // const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        // const nonFlaggedMessage = await constructMessage({ 
-        //   contract: mockERC721.address,
-        //   tokenId: data.tokenId,
-        //   isFlagged: false,
-        //   timestamp: timestamp - 10,
-        //   signer: reservoirOracleSigner
-        // })
+        const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
+        const nonFlaggedMessage = await constructMessage({ 
+          contract: mockERC721.address,
+          tokenId: data.tokenId,
+          isFlagged: false,
+          timestamp: timestamp - 10,
+          signer: reservoirOracleSigner
+        })
 
         // Borrower is not msg.sender
-        await expect(dyve.closePosition(makerOrderHash, data.tokenId)) //, nonFlaggedMessage))
+        await expect(dyve.closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage))
           .to.be.rejectedWith("Order: Borrower must be the sender")
 
         // Borrower does not own the ERC721
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 3)) //, nonFlaggedMessage))
+        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 3, nonFlaggedMessage))
           .to.be.rejectedWith("Order: Borrower does not own the returning ERC721 token")
 
         // // message id is invalid
-        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2)) //, nonFlaggedMessage))
+        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2, nonFlaggedMessage))
         //   .to.be.rejectedWith("InvalidId")
 
         // // message timestamp is invalid
         // const invalidTimestampMessage = { ...nonFlaggedMessage, timestamp: timestamp + 100 }
-        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId)) //, invalidTimestampMessage))
+        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, invalidTimestampMessage))
         //   .to.be.rejectedWith("InvalidTimestamp")
 
         // // Invalid signature length
         // const invalidSignatureLengthMessage = { ...nonFlaggedMessage, signature: [] }
-        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId)) //, invalidSignatureLengthMessage))
+        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, invalidSignatureLengthMessage))
         //   .to.be.rejectedWith("InvalidSignatureLength")
 
         // // Invalid signature
         // const invalidSignatureMessage = { ...nonFlaggedMessage, signature: nonFlaggedMessage.signature.slice(0, -2) + '00' }
-        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId)) //, invalidSignatureMessage))
+        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, invalidSignatureMessage))
         //   .to.be.rejectedWith("InvalidMessage")
 
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId) //, nonFlaggedMessage);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage);
         await closeTx.wait();
 
         // Order is not active
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId)) //, nonFlaggedMessage))
+        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage))
           .to.be.rejectedWith("Order: Order is not borrowed")
 
         // // token is flagged

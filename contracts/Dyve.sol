@@ -264,15 +264,14 @@ contract Dyve is
     );
   }
 
-  // * @param message the message from the oracle
   /**
   * @notice Return back an NFT to the lender and release collateral to the borrower
   * @dev we check that the borrower owns the incoming ID from the collection.
   * @param orderHash order hash of the maker order
   * @param returnTokenId the NFT to be returned
+  * @param message the message from the oracle
   */
-  // function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
-  function closePosition(bytes32 orderHash, uint256 returnTokenId) external {
+  function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
     Order storage order = orders[orderHash];
 
     require(order.borrower == msg.sender, "Order: Borrower must be the sender");
@@ -285,9 +284,9 @@ contract Dyve is
       require(IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) >= order.amount, "Order: Borrower does not own the sufficient amount of ERC1155 tokens to return");
     }
 
-    // // Validate the message
-    // uint256 maxMessageAge = 5 minutes;
-    // bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
+    // Validate the message
+    uint256 maxMessageAge = 5 minutes;
+    bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
     // if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
     //     revert ReservoirOracle.InvalidMessage();
     // }
