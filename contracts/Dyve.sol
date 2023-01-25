@@ -287,9 +287,9 @@ contract Dyve is
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
     bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
-    // if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
-    //     revert ReservoirOracle.InvalidMessage();
-    // }
+    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
+        revert ReservoirOracle.InvalidMessage();
+    }
     // (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
     // require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 

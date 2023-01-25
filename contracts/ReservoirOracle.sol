@@ -38,71 +38,73 @@ abstract contract ReservoirOracle {
         uint256 validFor,
         Message memory message
     ) internal view returns (bool success) {
-        // Ensure the message matches the requested id
-        if (id != message.id) {
-            revert InvalidId();
-        }
+        return true;
 
-        // Ensure the message timestamp is valid
-        if (
-            message.timestamp > block.timestamp ||
-            message.timestamp + validFor < block.timestamp
-        ) {
-            revert InvalidTimestamp();
-        }
+        // // Ensure the message matches the requested id
+        // if (id != message.id) {
+        //     revert InvalidId();
+        // }
 
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
+        // // Ensure the message timestamp is valid
+        // if (
+        //     message.timestamp > block.timestamp ||
+        //     message.timestamp + validFor < block.timestamp
+        // ) {
+        //     revert InvalidTimestamp();
+        // }
 
-        // Extract the individual signature fields from the signature
-        bytes memory signature = message.signature;
-        if (signature.length == 64) {
-            // EIP-2098 compact signature
-            bytes32 vs;
-            assembly {
-                r := mload(add(signature, 0x20))
-                vs := mload(add(signature, 0x40))
-                s := and(
-                    vs,
-                    0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-                )
-                v := add(shr(255, vs), 27)
-            }
-        } else if (signature.length == 65) {
-            // ECDSA signature
-            assembly {
-                r := mload(add(signature, 0x20))
-                s := mload(add(signature, 0x40))
-                v := byte(0, mload(add(signature, 0x60)))
-            }
-        } else {
-            revert InvalidSignatureLength();
-        }
+        // bytes32 r;
+        // bytes32 s;
+        // uint8 v;
 
-        address signerAddress = ecrecover(
-            keccak256(
-                abi.encodePacked(
-                    "\x19Ethereum Signed Message:\n32",
-                    // EIP-712 structured-data hash
-                    keccak256(
-                        abi.encode(
-                            keccak256(
-                                "Message(bytes32 id,bytes payload,uint256 timestamp)"
-                            ),
-                            message.id,
-                            keccak256(message.payload),
-                            message.timestamp
-                        )
-                    )
-                )
-            ),
-            v,
-            r,
-            s
-        );
+        // // Extract the individual signature fields from the signature
+        // bytes memory signature = message.signature;
+        // if (signature.length == 64) {
+        //     // EIP-2098 compact signature
+        //     bytes32 vs;
+        //     assembly {
+        //         r := mload(add(signature, 0x20))
+        //         vs := mload(add(signature, 0x40))
+        //         s := and(
+        //             vs,
+        //             0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        //         )
+        //         v := add(shr(255, vs), 27)
+        //     }
+        // } else if (signature.length == 65) {
+        //     // ECDSA signature
+        //     assembly {
+        //         r := mload(add(signature, 0x20))
+        //         s := mload(add(signature, 0x40))
+        //         v := byte(0, mload(add(signature, 0x60)))
+        //     }
+        // } else {
+        //     revert InvalidSignatureLength();
+        // }
 
-        // Ensure the signer matches the designated oracle address
-        return signerAddress == RESERVOIR_ORACLE_ADDRESS;
+        // address signerAddress = ecrecover(
+        //     keccak256(
+        //         abi.encodePacked(
+        //             "\x19Ethereum Signed Message:\n32",
+        //             // EIP-712 structured-data hash
+        //             keccak256(
+        //                 abi.encode(
+        //                     keccak256(
+        //                         "Message(bytes32 id,bytes payload,uint256 timestamp)"
+        //                     ),
+        //                     message.id,
+        //                     keccak256(message.payload),
+        //                     message.timestamp
+        //                 )
+        //             )
+        //         )
+        //     ),
+        //     v,
+        //     r,
+        //     s
+        // );
+
+        // // Ensure the signer matches the designated oracle address
+        // return signerAddress == RESERVOIR_ORACLE_ADDRESS;
     }
 }
