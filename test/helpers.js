@@ -33,8 +33,8 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   await protocolFeeManager.deployed();
 
   const Dyve = await ethers.getContractFactory("Dyve");
-  // const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracleSigner.address, protocolFeeRecipient.address);
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracleSigner.address, protocolFeeRecipient.address);
+  // const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
   return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve];

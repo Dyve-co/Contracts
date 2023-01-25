@@ -12,7 +12,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Dyve contacts/interfaces/libraries
-// import {ReservoirOracle} from "./ReservoirOracle.sol";
+import {ReservoirOracle} from "./ReservoirOracle.sol";
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
@@ -21,7 +21,7 @@ import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
-  // ReservoirOracle,
+  ReservoirOracle,
   ReentrancyGuard,
   Ownable,
   EIP712("Dyve", "1")
@@ -122,20 +122,19 @@ contract Dyve is
     OrderStatus status
   );
 
-  // * @param reservoirOracleAddress address of the Reservoir Oracle
   /**
     * @notice Constructor
     * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
     * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
+    * @param reservoirOracleAddress address of the Reservoir Oracle
     * @param _protocolFeeRecipient protocol fee recipient address
     */
   constructor(
     address whitelistedCurrenciesAddress, 
     address protocolFeeManagerAddress, 
-    // address reservoirOracleAddress, 
+    address reservoirOracleAddress, 
     address _protocolFeeRecipient
-  // ) ReservoirOracle(reservoirOracleAddress) {
-  ) {
+  ) ReservoirOracle(reservoirOracleAddress) {
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
     protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
     protocolFeeRecipient = _protocolFeeRecipient;
