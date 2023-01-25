@@ -1080,14 +1080,14 @@ describe("Dyve", function () {
         await expect(dyve.connect(addr1).closePosition(makerOrderHash, 3, nonFlaggedMessage))
           .to.be.rejectedWith("Order: Borrower does not own the returning ERC721 token")
 
-        // // message id is invalid
-        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2, nonFlaggedMessage))
-        //   .to.be.rejectedWith("InvalidId")
+        // message id is invalid
+        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2, nonFlaggedMessage))
+          .to.be.rejectedWith("InvalidId")
 
-        // // message timestamp is invalid
-        // const invalidTimestampMessage = { ...nonFlaggedMessage, timestamp: timestamp + 100 }
-        // await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, invalidTimestampMessage))
-        //   .to.be.rejectedWith("InvalidTimestamp")
+        // message timestamp is invalid
+        const invalidTimestampMessage = { ...nonFlaggedMessage, timestamp: timestamp + 100 }
+        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, invalidTimestampMessage))
+          .to.be.rejectedWith("InvalidTimestamp")
 
         // // Invalid signature length
         // const invalidSignatureLengthMessage = { ...nonFlaggedMessage, signature: [] }

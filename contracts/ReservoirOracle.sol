@@ -38,24 +38,24 @@ abstract contract ReservoirOracle {
         uint256 validFor,
         Message memory message
     ) internal view returns (bool success) {
+        // Ensure the message matches the requested id
+        if (id != message.id) {
+            revert InvalidId();
+        }
+
+        // Ensure the message timestamp is valid
+        if (
+            message.timestamp > block.timestamp ||
+            message.timestamp + validFor < block.timestamp
+        ) {
+            revert InvalidTimestamp();
+        }
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
         return true;
-
-        // // Ensure the message matches the requested id
-        // if (id != message.id) {
-        //     revert InvalidId();
-        // }
-
-        // // Ensure the message timestamp is valid
-        // if (
-        //     message.timestamp > block.timestamp ||
-        //     message.timestamp + validFor < block.timestamp
-        // ) {
-        //     revert InvalidTimestamp();
-        // }
-
-        // bytes32 r;
-        // bytes32 s;
-        // uint8 v;
 
         // // Extract the individual signature fields from the signature
         // bytes memory signature = message.signature;
