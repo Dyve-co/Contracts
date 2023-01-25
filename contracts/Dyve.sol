@@ -12,7 +12,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Dyve contacts/interfaces/libraries
-import {ReservoirOracle} from "./ReservoirOracle.sol";
+// import {ReservoirOracle} from "./ReservoirOracle.sol";
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
@@ -21,7 +21,7 @@ import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
-  ReservoirOracle,
+  // ReservoirOracle,
   ReentrancyGuard,
   Ownable,
   EIP712("Dyve", "1")
@@ -122,19 +122,20 @@ contract Dyve is
     OrderStatus status
   );
 
+  // * @param reservoirOracleAddress address of the Reservoir Oracle
   /**
     * @notice Constructor
     * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
     * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
-    * @param reservoirOracleAddress address of the Reservoir Oracle
     * @param _protocolFeeRecipient protocol fee recipient address
     */
   constructor(
     address whitelistedCurrenciesAddress, 
     address protocolFeeManagerAddress, 
-    address reservoirOracleAddress, 
+    // address reservoirOracleAddress, 
     address _protocolFeeRecipient
-  ) ReservoirOracle(reservoirOracleAddress) {
+  // ) ReservoirOracle(reservoirOracleAddress) {
+  ) {
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
     protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
     protocolFeeRecipient = _protocolFeeRecipient;
@@ -264,14 +265,15 @@ contract Dyve is
     );
   }
 
+  // * @param message the message from the oracle
   /**
   * @notice Return back an NFT to the lender and release collateral to the borrower
   * @dev we check that the borrower owns the incoming ID from the collection.
   * @param orderHash order hash of the maker order
   * @param returnTokenId the NFT to be returned
-  * @param message the message from the oracle
   */
-  function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
+  // function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
+  function closePosition(bytes32 orderHash, uint256 returnTokenId) external {
     Order storage order = orders[orderHash];
 
     require(order.borrower == msg.sender, "Order: Borrower must be the sender");
@@ -284,14 +286,14 @@ contract Dyve is
       require(IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) >= order.amount, "Order: Borrower does not own the sufficient amount of ERC1155 tokens to return");
     }
 
-    // Validate the message
-    uint256 maxMessageAge = 5 minutes;
-    bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
-    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
-        revert ReservoirOracle.InvalidMessage();
-    }
-    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
-    require(!flaggedStatus, "Order: Cannot return a flagged NFT");
+    // // Validate the message
+    // uint256 maxMessageAge = 5 minutes;
+    // bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
+    // if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
+    //     revert ReservoirOracle.InvalidMessage();
+    // }
+    // (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
+    // require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 
     order.status = OrderStatus.CLOSED;
 

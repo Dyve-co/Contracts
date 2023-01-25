@@ -21,7 +21,7 @@ async function main() {
   const dyve = await Dyve.deploy(
     whitelistedCurrencies.address, 
     protocolFeeManager.address, 
-    '0x32dA57E736E05f75aa4FaE2E9Be60FD904492726', 
+    // '0x32dA57E736E05f75aa4FaE2E9Be60FD904492726', 
     addresses.FEE_RECIPIENT
   );
   const tx = await dyve.deployTransaction.wait();
