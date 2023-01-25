@@ -1387,4 +1387,25 @@ describe("Dyve", function () {
       await expect(tx).to.emit(dyve, "WhitelistedCurrenciesUpdated").withArgs(ethers.constants.AddressZero)
     })
   })
+
+ 
+  describe("Reservoir Oracle functionality", function () {
+    it.only("tests the token flagging from the reservoir api", async () => {
+      const Oracle = await ethers.getContractFactory("Oracle")
+      const oracle = await Oracle.deploy('0xAeB1D03929bF87F69888f381e73FBf75753d75AF')
+
+      const options = {
+        method: 'GET',
+        url: 'https://api-goerli.reservoir.tools/oracle/tokens/status/v2?tokens=0xc963CaC86C0Acabe5450df56d3Fa7a26DA981D53%3A48',
+        headers: {accept: '*/*', 'x-api-key': 'dyve-api'}
+      };
+
+      const { data: { messages: [result] } } = await axios.request(options)
+      const { message } = result
+      console.log("message: ", message)
+      
+      const reservoirOracleSigner = await oracle._verifyMessage(message.id, 300, message)
+      console.log("reservoirOracleSigner: ", reservoirOracleSigner)
+    })
+  })
 })

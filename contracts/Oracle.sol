@@ -2,7 +2,7 @@
 pragma solidity ^0.8.16;
 
 // Inspired by https://github.com/ZeframLou/trustus
-abstract contract ReservoirOracle {
+contract Oracle {
     // --- Structs ---
 
     struct Message {
@@ -38,7 +38,7 @@ abstract contract ReservoirOracle {
         uint256 validFor,
         Message memory message
     // ) internal view returns (bool success) {
-    ) internal view returns (bool success) {
+    ) external view returns (bool success) {
         // Ensure the message matches the requested id
         if (id != message.id) {
             revert InvalidId();
@@ -81,7 +81,7 @@ abstract contract ReservoirOracle {
             revert InvalidSignatureLength();
         }
 
-        return true
+        return true;
 
         // address signerAddress = ecrecover(
         //     keccak256(
