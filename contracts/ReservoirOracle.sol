@@ -81,31 +81,29 @@ abstract contract ReservoirOracle {
             revert InvalidSignatureLength();
         }
 
-        return true
+        address signerAddress = ecrecover(
+            keccak256(
+                abi.encodePacked(
+                    "\x19Ethereum Signed Message:\n32",
+                    // EIP-712 structured-data hash
+                    keccak256(
+                        abi.encode(
+                            keccak256(
+                                "Message(bytes32 id,bytes payload,uint256 timestamp)"
+                            ),
+                            message.id,
+                            keccak256(message.payload),
+                            message.timestamp
+                        )
+                    )
+                )
+            ),
+            v,
+            r,
+            s
+        );
 
-        // address signerAddress = ecrecover(
-        //     keccak256(
-        //         abi.encodePacked(
-        //             "\x19Ethereum Signed Message:\n32",
-        //             // EIP-712 structured-data hash
-        //             keccak256(
-        //                 abi.encode(
-        //                     keccak256(
-        //                         "Message(bytes32 id,bytes payload,uint256 timestamp)"
-        //                     ),
-        //                     message.id,
-        //                     keccak256(message.payload),
-        //                     message.timestamp
-        //                 )
-        //             )
-        //         )
-        //     ),
-        //     v,
-        //     r,
-        //     s
-        // );
-
-        // // Ensure the signer matches the designated oracle address
-        // return signerAddress == RESERVOIR_ORACLE_ADDRESS;
+        // Ensure the signer matches the designated oracle address
+        return signerAddress == RESERVOIR_ORACLE_ADDRESS;
     }
 }

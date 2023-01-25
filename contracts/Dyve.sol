@@ -290,8 +290,8 @@ contract Dyve is
     if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
         revert ReservoirOracle.InvalidMessage();
     }
-    // (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
-    // require(!flaggedStatus, "Order: Cannot return a flagged NFT");
+    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
+    require(!flaggedStatus, "Order: Cannot return a flagged NFT");
 
     order.status = OrderStatus.CLOSED;
 
