@@ -4,7 +4,7 @@ const axios = require('axios')
 const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("./helpers")
 use(require('chai-as-promised'))
 
-const { solidityKeccak256, keccak256, defaultAbiCoder, _TypedDataEncoder } = ethers.utils;
+const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
 
 const ETH_TO_ERC721 = 0
 const ETH_TO_ERC1155 = 1
@@ -71,7 +71,7 @@ describe("Dyve", function () {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -87,7 +87,16 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data,  signature }
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1").toString() })
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1").toString() })
       await borrowTx.wait()
 
       const makerOrderHash = computeOrderHash(data)
@@ -132,7 +141,7 @@ describe("Dyve", function () {
         order.status,
       )
 
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") }))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1") }))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
@@ -157,7 +166,16 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data,  signature }
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1").toString() })
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC1155.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1").toString() })
       await borrowTx.wait()
 
       const makerOrderHash = computeOrderHash(data)
@@ -202,7 +220,7 @@ describe("Dyve", function () {
         order.status,
       )
 
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") }))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1") }))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
@@ -211,7 +229,7 @@ describe("Dyve", function () {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -227,10 +245,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       const makerOrderHash = computeOrderHash(data)
@@ -275,7 +302,7 @@ describe("Dyve", function () {
         order.status,
       )
 
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
@@ -300,10 +327,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC1155.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       const makerOrderHash = computeOrderHash(data)
@@ -348,7 +384,7 @@ describe("Dyve", function () {
         order.status,
       )
 
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
@@ -357,7 +393,7 @@ describe("Dyve", function () {
         orderType: ERC721_TO_ERC20,
         signer: addr1.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -373,10 +409,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, addr1, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.fulfillOrder(makerOrder)
+      const borrowTx = await dyve.fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       const makerOrderHash = computeOrderHash(data)
@@ -421,7 +466,7 @@ describe("Dyve", function () {
         order.status,
       )
 
-      await expect(dyve.fulfillOrder(makerOrder))
+      await expect(dyve.fulfillOrder(makerOrder, message))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
@@ -446,10 +491,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, addr1, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC1155.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.fulfillOrder(makerOrder)
+      const borrowTx = await dyve.fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       const makerOrderHash = computeOrderHash(data)
@@ -494,7 +548,7 @@ describe("Dyve", function () {
         order.status,
       )
 
-      await expect(dyve.fulfillOrder(makerOrder))
+      await expect(dyve.fulfillOrder(makerOrder, message))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
@@ -503,7 +557,7 @@ describe("Dyve", function () {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -519,47 +573,82 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp } = await ethers.provider.getBlock('latest');
+      const messageParams = {
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: timestamp - 10,
+        signer: reservoirOracleSigner
+      } 
+      const message = await constructMessage(messageParams)
+
       const totalAmount = ethers.utils.parseEther("1.1");
 
       // Incorrect amount of ETH sent
       const reducedAmount = totalAmount.sub(1);
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: reducedAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: reducedAmount }))
         .to.be.rejectedWith("InvalidMsgValue")
 
       // ETH sent to an ERC20 based transaction
       const ERC20Order = { ...makerOrder, currency: weth.address, orderType: ERC20_TO_ERC721 }
-      await expect(dyve.connect(addr1).fulfillOrder(ERC20Order, { value: totalAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(ERC20Order, message, { value: totalAmount }))
         .to.be.rejectedWith("InvalidMsgValue")
+
+      // message id is invalid
+      const invalidIdMessage = await constructMessage({ ...messageParams, tokenId: 1 })
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, invalidIdMessage, { value: totalAmount }))
+        .to.be.rejectedWith("InvalidId")
+
+      // message timestamp is invalid
+      const invalidTimestampMessage = { ...message, timestamp: timestamp + 100 }
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, invalidTimestampMessage, { value: totalAmount }))
+        .to.be.rejectedWith("InvalidTimestamp")
+
+      // Invalid signature length
+      const invalidSignatureLengthMessage = { ...message, signature: [] }
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, invalidSignatureLengthMessage, { value: totalAmount }))
+        .to.be.rejectedWith("InvalidSignatureLength")
+
+      // Invalid signature
+      const invalidSignatureMessage = { ...message, signature: message.signature.slice(0, -2) + '00' }
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, invalidSignatureMessage, { value: totalAmount }))
+        .to.be.rejectedWith("InvalidMessage")
 
       // Signer is the zero address
       const zeroAddressMaker = { ...makerOrder, signer: ethers.constants.AddressZero }
-      await expect(dyve.connect(addr1).fulfillOrder(zeroAddressMaker, { value: totalAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(zeroAddressMaker, message, { value: totalAmount }))
         .to.be.rejectedWith("InvalidSigner")
 
       // listing has expired
       const expiredListingMaker = { ...makerOrder, endTime: data.startTime - 100 }
-      await expect(dyve.connect(addr1).fulfillOrder(expiredListingMaker, { value: totalAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(expiredListingMaker, message, { value: totalAmount }))
         .to.be.rejectedWith("ExpiredListing")
 
       // fee is zero
       const feeZeroMaker = { ...makerOrder, fee: ethers.utils.parseEther("0").toString() }
-      await expect(dyve.connect(addr1).fulfillOrder(feeZeroMaker, { value: ethers.utils.parseEther("1") }))
+      await expect(dyve.connect(addr1).fulfillOrder(feeZeroMaker, message, { value: ethers.utils.parseEther("1") }))
         .to.be.rejectedWith("InvalidFee")
 
       // collateral is zero
       const collateralZeroMaker = { ...makerOrder, collateral: ethers.utils.parseEther("0").toString() }
-      await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, { value: ethers.utils.parseEther("0.1") }))
+      await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, message, { value: ethers.utils.parseEther("0.1") }))
         .to.be.rejectedWith("InvalidCollateral")
 
       // currency is not whitelisted
       const nonWhitelistedCurrencyMaker = { ...makerOrder, currency: ethers.constants.AddressZero, orderType: ERC20_TO_ERC721 }
-      await expect(dyve.connect(addr1).fulfillOrder(nonWhitelistedCurrencyMaker))
+      await expect(dyve.connect(addr1).fulfillOrder(nonWhitelistedCurrencyMaker, message))
         .to.be.rejectedWith("InvalidCurrency")
 
       // invalid signature
       const invalidSignatureMaker = { ...makerOrder, signature: ethers.utils.hexlify(ethers.utils.randomBytes(32)) }
-      await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, { value: totalAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(invalidSignatureMaker, message, { value: totalAmount }))
         .to.be.rejectedWith("InvalidSignature")
+
+      // token is flagged
+      const flaggedMessage = await constructMessage({ ...messageParams, isFlagged: true})
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, flaggedMessage, { value: totalAmount }))
+        .to.be.rejectedWith("TokenFlagged")
     })
   })
 
@@ -569,7 +658,7 @@ describe("Dyve", function () {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 100,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -585,7 +674,16 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: ethers.utils.parseEther("1.1") })
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1") })
       await borrowTx.wait();
 
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
@@ -622,7 +720,7 @@ describe("Dyve", function () {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -630,7 +728,7 @@ describe("Dyve", function () {
         currency: mockUSDC.address,
         nonce: 100,
         premiumCollection: premiumCollection.address,
-        premiumTokenId: 1,
+        premiumTokenId: 0,
         startTime: Math.floor(Date.now() / 1000),
         endTime: Math.floor(Date.now() / 1000) + 86400,
       }
@@ -641,10 +739,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
@@ -660,7 +767,7 @@ describe("Dyve", function () {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -668,10 +775,9 @@ describe("Dyve", function () {
         currency: mockUSDC.address,
         nonce: 100,
         premiumCollection: premiumCollection.address,
-        premiumTokenId: 1,
+        premiumTokenId: 0,
         startTime: Math.floor(Date.now() / 1000),
         endTime: Math.floor(Date.now() / 1000) + 86400,
-
       }
 
       const mintTx = await premiumCollection.mint();
@@ -683,10 +789,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
@@ -702,7 +817,7 @@ describe("Dyve", function () {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -710,7 +825,7 @@ describe("Dyve", function () {
         currency: mockUSDC.address,
         nonce: 100,
         premiumCollection: mockERC721.address,
-        premiumTokenId: 1,
+        premiumTokenId: 0,
         startTime: Math.floor(Date.now() / 1000),
         endTime: Math.floor(Date.now() / 1000) + 86400,
       }
@@ -724,10 +839,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
@@ -743,7 +867,7 @@ describe("Dyve", function () {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -751,7 +875,7 @@ describe("Dyve", function () {
         currency: mockUSDC.address,
         nonce: 100,
         premiumCollection: premiumCollection.address,
-        premiumTokenId: 1,
+        premiumTokenId: 0,
         startTime: Math.floor(Date.now() / 1000),
         endTime: Math.floor(Date.now() / 1000) + 86400,
       }
@@ -765,10 +889,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await addCurrencyTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait()
 
       await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
@@ -785,7 +918,7 @@ describe("Dyve", function () {
           orderType: ETH_TO_ERC721,
           signer: owner.address,
           collection: mockERC721.address,
-          tokenId: 1,
+          tokenId: 0,
           amount: 1,
           duration: 10800,
           collateral: ethers.utils.parseEther("1").toString(),
@@ -801,21 +934,30 @@ describe("Dyve", function () {
         const signature = await generateSignature(data, owner, dyve)
         const makerOrder = { ...data, signature }
 
+        const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+        const fulfillOrderMessage = await constructMessage({ 
+          contract: mockERC721.address,
+          tokenId: 0,
+          isFlagged: false,
+          timestamp: fulfillOrderTimestamp - 10,
+          signer: reservoirOracleSigner,
+        })
+
         const totalAmount = ethers.utils.parseEther("1.1").toString();
-        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
+        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, fulfillOrderMessage, { value: totalAmount })
         await borrowTx.wait();
 
         const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
         const message = await constructMessage({ 
-          contract: mockERC721.address, 
-          tokenId: 2, 
+          contract: mockERC721.address,
+          tokenId: 1,
           isFlagged: false,
-          timestamp: timestamp - 10, 
-          signer: reservoirOracleSigner 
+          timestamp: timestamp - 10,
+          signer: reservoirOracleSigner,
         })
 
         const makerOrderHash = computeOrderHash(data);
-        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 2, message);
+        const closeTx = await dyve.connect(addr1).closePosition(makerOrderHash, 1, message);
         await closeTx.wait();
 
         const order = await dyve.orders(makerOrderHash)
@@ -823,7 +965,7 @@ describe("Dyve", function () {
         await expect(() => closeTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
         await expect(() => closeTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("1"));
 
-        await expect(mockERC721.ownerOf(2)).to.eventually.equal(owner.address);
+        await expect(mockERC721.ownerOf(1)).to.eventually.equal(owner.address);
         expect(order.status).to.equal(2);
 
         await expect(closeTx)
@@ -836,7 +978,7 @@ describe("Dyve", function () {
           order.collection,
           order.tokenId,
           order.amount,
-          2,
+          1,
           order.collateral,
           order.currency,
           order.status,
@@ -864,14 +1006,23 @@ describe("Dyve", function () {
         const signature = await generateSignature(data, owner, dyve)
         const makerOrder = { ...data, signature }
 
+        const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+        const fulfillOrderMessage = await constructMessage({ 
+          contract: mockERC1155.address,
+          tokenId: 0,
+          isFlagged: false,
+          timestamp: fulfillOrderTimestamp - 10,
+          signer: reservoirOracleSigner,
+        })
+
         const totalAmount = ethers.utils.parseEther("1.1").toString();
-        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
+        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, fulfillOrderMessage, { value: totalAmount })
         await borrowTx.wait();
 
         const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
         const message = await constructMessage({ 
           contract: mockERC1155.address, 
-          tokenId: 1, 
+          tokenId: 1,
           isFlagged: false,
           timestamp: timestamp - 10, 
           signer: reservoirOracleSigner 
@@ -911,7 +1062,7 @@ describe("Dyve", function () {
           orderType: ERC20_TO_ERC721,
           signer: owner.address,
           collection: mockERC721.address,
-          tokenId: 1,
+          tokenId: 0,
           amount: 1,
           duration: 10800,
           collateral: ethers.utils.parseEther("1").toString(),
@@ -927,10 +1078,19 @@ describe("Dyve", function () {
         const signature = await generateSignature(data, owner, dyve)
         const makerOrder = { ...data, signature }
 
+        const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+        const fulfillOrderMessage = await constructMessage({ 
+          contract: mockERC721.address,
+          tokenId: 0,
+          isFlagged: false,
+          timestamp: fulfillOrderTimestamp - 10,
+          signer: reservoirOracleSigner,
+        })
+
         const whitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
         await whitelistTx.wait();
 
-        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, fulfillOrderMessage)
         await borrowTx.wait();
 
         const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
@@ -951,7 +1111,7 @@ describe("Dyve", function () {
         await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.eq(ethers.utils.parseEther("0"));
         await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.eq(ethers.utils.parseEther(String(30 - 0.1)));
 
-        await expect(mockERC721.ownerOf(1)).to.eventually.equal(owner.address);
+        await expect(mockERC721.ownerOf(0)).to.eventually.equal(owner.address);
         expect(order.status).to.equal(2);
 
         await expect(closeTx)
@@ -964,7 +1124,7 @@ describe("Dyve", function () {
           order.collection,
           order.tokenId,
           order.amount,
-          1,
+          0,
           order.collateral,
           order.currency,
           order.status,
@@ -992,10 +1152,19 @@ describe("Dyve", function () {
         const signature = await generateSignature(data, owner, dyve)
         const makerOrder = { ...data, signature }
 
+        const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+        const fulfillOrderMessage = await constructMessage({ 
+          contract: mockERC1155.address,
+          tokenId: 0,
+          isFlagged: false,
+          timestamp: fulfillOrderTimestamp - 10,
+          signer: reservoirOracleSigner,
+        })
+
         const whitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
         await whitelistTx.wait();
 
-        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, fulfillOrderMessage)
         await borrowTx.wait();
 
         const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
@@ -1041,7 +1210,7 @@ describe("Dyve", function () {
           orderType: ETH_TO_ERC721,
           signer: owner.address,
           collection: mockERC721.address,
-          tokenId: 1,
+          tokenId: 0,
           amount: 1,
           duration: 10800,
           collateral: ethers.utils.parseEther("1").toString(),
@@ -1057,52 +1226,41 @@ describe("Dyve", function () {
         const signature = await generateSignature(data, owner, dyve)
         const makerOrder = { ...data, signature }
 
+        const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+        const fulfillOrderMessage = await constructMessage({ 
+          contract: mockERC721.address,
+          tokenId: 0,
+          isFlagged: false,
+          timestamp: fulfillOrderTimestamp - 10,
+          signer: reservoirOracleSigner,
+        })
+
         const totalAmount = ethers.utils.parseEther("1.1").toString();
-        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
+        const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, fulfillOrderMessage, { value: totalAmount })
         await borrowTx.wait();
 
         const makerOrderHash = computeOrderHash(data);
 
         const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
-        const nonFlaggedMessage = await constructMessage({ 
+        const messageParams = {
           contract: mockERC721.address,
           tokenId: data.tokenId,
           isFlagged: false,
           timestamp: timestamp - 10,
           signer: reservoirOracleSigner
-        })
+        } 
+        const nonFlaggedMessage = await constructMessage(messageParams)
 
         // Borrower is not msg.sender
         await expect(dyve.closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage))
           .to.be.rejectedWith("Order: Borrower must be the sender")
 
-        // message timestamp is invalid
-        const { timestamp: nonFlaggedTimestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
-        const wrongTimestampMessage = { ...nonFlaggedMessage, timestamp: nonFlaggedTimestamp + 100 }
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, wrongTimestampMessage))
-          .to.be.rejectedWith("InvalidTimestamp")
-
-        // message timestamp is too old
-        const pastTimestampMessage = { ...nonFlaggedMessage, timestamp: nonFlaggedMessage.timestamp - 310 }
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, pastTimestampMessage))
-          .to.be.rejectedWith("InvalidTimestamp")
-
-        // signature length is incorrect
-        const wrongSignatureMessage = { ...nonFlaggedMessage, signature: [] }
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, wrongSignatureMessage))
-          .to.be.rejectedWith("InvalidSignature")
-
-        // signature is invalid
-        const invalidSignatureMaker = { ...nonFlaggedMessage, signature: nonFlaggedMessage.signature.slice(0, -2) + "00" }
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, invalidSignatureMaker))
-          .to.be.rejectedWith("InvalidMessage")
-
         // Borrower does not own the ERC721
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 3, nonFlaggedMessage))
+        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2, nonFlaggedMessage))
           .to.be.rejectedWith("Order: Borrower does not own the returning ERC721 token")
 
         // message id is invalid
-        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2, nonFlaggedMessage))
+        await expect(dyve.connect(addr1).closePosition(makerOrderHash, 1, nonFlaggedMessage))
           .to.be.rejectedWith("InvalidId")
 
         // message timestamp is invalid
@@ -1132,13 +1290,13 @@ describe("Dyve", function () {
         const flaggedSignature = await generateSignature(flaggedData, owner, dyve)
         const flaggedMakerOrder = { ...flaggedData, signature: flaggedSignature }
 
-        const flaggedBorrowTx = await dyve.connect(addr1).fulfillOrder(flaggedMakerOrder, { value: totalAmount })
+        const flaggedBorrowTx = await dyve.connect(addr1).fulfillOrder(flaggedMakerOrder, fulfillOrderMessage, { value: totalAmount })
         await flaggedBorrowTx.wait();
 
         const { timestamp: flaggedTimestamp } = await ethers.provider.getBlock(borrowTx.blockNumber);
         const flaggedMessage = await constructMessage({ 
           contract: mockERC721.address,
-          tokenId: 2,
+          tokenId: 1,
           isFlagged: true,
           timestamp: flaggedTimestamp - 10,
           signer: reservoirOracleSigner
@@ -1147,8 +1305,8 @@ describe("Dyve", function () {
         const flaggedMakerOrderHash = computeOrderHash(flaggedData);
 
         // Borrower does not own the ERC721
-        await expect(dyve.connect(addr1).closePosition(flaggedMakerOrderHash, 2, flaggedMessage))
-          .to.be.rejectedWith("Order: Cannot return a flagged NFT");
+        await expect(dyve.connect(addr1).closePosition(flaggedMakerOrderHash, 1, flaggedMessage))
+          .to.be.rejectedWith("TokenFlagged")
       })
   })
 
@@ -1158,7 +1316,7 @@ describe("Dyve", function () {
         orderType: ERC20_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 100,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -1174,10 +1332,19 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const whitelistTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
       await whitelistTx.wait()
 
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder)
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message)
       await borrowTx.wait();
 
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
@@ -1219,7 +1386,7 @@ describe("Dyve", function () {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 100,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -1235,8 +1402,17 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const totalAmount = ethers.utils.parseEther("1.1").toString();
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount })
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: totalAmount })
       await borrowTx.wait();
 
       const makerOrderHash = computeOrderHash(data);
@@ -1269,7 +1445,7 @@ describe("Dyve", function () {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -1285,8 +1461,17 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const totalAmount = ethers.utils.parseEther("1.1").toString();
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: totalAmount }))
         .to.be.rejectedWith("ExpiredNonce")
 
       await expect(cancelTx)
@@ -1312,7 +1497,7 @@ describe("Dyve", function () {
         orderType: ETH_TO_ERC721,
         signer: owner.address,
         collection: mockERC721.address,
-        tokenId: 1,
+        tokenId: 0,
         amount: 1,
         duration: 10800,
         collateral: ethers.utils.parseEther("1").toString(),
@@ -1328,8 +1513,17 @@ describe("Dyve", function () {
       const signature = await generateSignature(data, owner, dyve)
       const makerOrder = { ...data, signature }
 
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
       const totalAmount = ethers.utils.parseEther("1.1").toString();
-      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, { value: totalAmount }))
+      await expect(dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: totalAmount }))
         .to.be.rejectedWith("ExpiredNonce")
 
       await expect(cancelTx)
@@ -1353,13 +1547,13 @@ describe("Dyve", function () {
       const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 1)
       await addPremiumCollectionTx.wait()
 
-      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 1, owner.address)).to.be.eventually.equal(0)
+      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 0, owner.address)).to.be.eventually.equal(0)
       await expect(addPremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 1)
 
       const removePremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 0)
       await removePremiumCollectionTx.wait()
 
-      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 1, owner.address)).to.be.eventually.equal(0)
+      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 0, owner.address)).to.be.eventually.equal(0)
       await expect(removePremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 0)
     })
 
@@ -1367,7 +1561,7 @@ describe("Dyve", function () {
       const updatePremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(mockERC721.address, 100)
       await updatePremiumCollectionTx.wait()
 
-      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 1, owner.address)).to.be.eventually.equal(100)
+      await expect(protocolFeeManager.determineProtocolFeeRate(mockERC721.address, 0, owner.address)).to.be.eventually.equal(100)
       await expect(updatePremiumCollectionTx).to.emit(protocolFeeManager, "UpdatedCollectionFeeRate").withArgs(mockERC721.address, 100)
     })
 

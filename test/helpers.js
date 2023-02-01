@@ -13,7 +13,7 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   await mockUSDC.deployed();
 
   const MockERC721 = await ethers.getContractFactory("MockERC721");
-  const mockERC721 = await MockERC721.deploy("mockERC721", "mockERC721");
+  const mockERC721 = await MockERC721.deploy("mockERC721", "mockERC721", "URI");
   await mockERC721.deployed();
 
   const MockERC1155 = await ethers.getContractFactory("MockERC1155");
@@ -21,7 +21,7 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   await mockERC1155.deployed();
 
   const PremiumCollection = await ethers.getContractFactory("MockERC721");
-  const premiumCollection = await PremiumCollection.deploy("premiumCollection", "premiumCollection");
+  const premiumCollection = await PremiumCollection.deploy("premiumCollection", "premiumCollection", "URI");
   await premiumCollection.deployed();
 
   const WhitelistedCurrencies = await ethers.getContractFactory("WhitelistedCurrencies");
