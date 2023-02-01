@@ -35,6 +35,7 @@ contract Dyve is
   address public protocolFeeRecipient;
   bytes4 public constant INTERFACE_ID_ERC721 = 0x80ac58cd;
   bytes4 public constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
+  uint256 public constant nonceLimit = 500000; 
 
   mapping(address => uint256) public userMinOrderNonce;
   mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
@@ -70,13 +71,16 @@ contract Dyve is
 	error ExpiredNonce();
 	error InvalidFee();
 	error InvalidCollateral();
+	error InvalidDuration();
 	error InvalidCurrency();
 	error InvalidSignature();
+  error TokenFlagged();
 
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
   event ProtocolFeeManagerUpdated(address indexed protocolFeeManagerAddress);
   event WhitelistedCurrenciesUpdated(address indexed whitelistedCurrenciesAddress);
+  event ProtocolFeeRecipientUpdated(address indexed _protocolFeeRecipient);
 
   event OrderFulfilled(
     bytes32 orderHash, // ask hash of the maker order
@@ -145,12 +149,8 @@ contract Dyve is
   * @param minNonce minimum user nonce
   */
   function cancelAllOrdersForSender(uint256 minNonce) external {
-    if (minNonce <= userMinOrderNonce[msg.sender]) {
-      revert InvalidMinNonce();
-    }
-    if (minNonce >= userMinOrderNonce[msg.sender] + 500000) {
-      revert InvalidMinNonce();
-    }
+    if (minNonce <= userMinOrderNonce[msg.sender]) revert InvalidMinNonce();
+    if (minNonce >= userMinOrderNonce[msg.sender] + nonceLimit) revert InvalidMinNonce();
     userMinOrderNonce[msg.sender] = minNonce;
 
     emit CancelAllOrders(msg.sender, minNonce);
@@ -161,14 +161,9 @@ contract Dyve is
   * @param orderNonces array of order nonces
   */
   function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
-    if (orderNonces.length == 0) {
-      revert EmptyNonceArray();
-    }
-
+    if (orderNonces.length == 0) revert EmptyNonceArray();
     for (uint256 i = 0; i < orderNonces.length; i++) {
-      if (orderNonces[i] < userMinOrderNonce[msg.sender]) {
-        revert InvalidNonce();
-      }
+      if (orderNonces[i] < userMinOrderNonce[msg.sender]) revert InvalidNonce();
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
     }
 
@@ -178,8 +173,9 @@ contract Dyve is
   /**
   * @notice Fullfills the order
   * @param order the order to be fulfilled
+  * @param message the message from the oracle
   */
-  function fulfillOrder(OrderTypes.Order calldata order)
+  function fulfillOrder(OrderTypes.Order calldata order, ReservoirOracle.Message calldata message)
       external
       payable
       nonReentrant
@@ -187,19 +183,17 @@ contract Dyve is
     if(
       (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) 
       && msg.value != (order.fee + order.collateral)
-    ) {
-      revert InvalidMsgValue();
-    }
+    ) revert InvalidMsgValue(); 
     if(
       (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155)
       && msg.value != 0
-    ) {
-      revert InvalidMsgValue();
-    }
+    ) revert InvalidMsgValue(); 
+
+    _validateTokenFlaggingMessage(message, order.collection, order.tokenId);
 
     // Check the maker ask order
     bytes32 orderHash = order.hash();
-    _validateOrder(order, _hashTypedDataV4(orderHash)); // message
+    _validateOrder(order, _hashTypedDataV4(orderHash));
 
     // Update maker ask order status to true (prevents replay)
     _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
@@ -273,7 +267,6 @@ contract Dyve is
   */
   function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
     Order storage order = orders[orderHash];
-
     require(order.borrower == msg.sender, "Order: Borrower must be the sender");
     require(order.expiryDateTime > block.timestamp, "Order: Order expired");
     require(order.status == OrderStatus.BORROWED, "Order: Order is not borrowed");
@@ -284,14 +277,7 @@ contract Dyve is
       require(IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) >= order.amount, "Order: Borrower does not own the sufficient amount of ERC1155 tokens to return");
     }
 
-    // Validate the message
-    uint256 maxMessageAge = 5 minutes;
-    bytes32 messageId = keccak256(abi.encode(keccak256("Token(address contract,uint256 tokenId)"), order.collection, returnTokenId)); 
-    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) {
-        revert ReservoirOracle.InvalidMessage();
-    }
-    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
-    require(!flaggedStatus, "Order: Cannot return a flagged NFT");
+    _validateTokenFlaggingMessage(message, order.collection, returnTokenId);
 
     order.status = OrderStatus.CLOSED;
 
@@ -457,10 +443,31 @@ contract Dyve is
   }
 
   /**
+   * @notice updates the ProtocolFeeRecipient instance
+   * @param _protocolFeeRecipient the address of the new ProtocolFeeRecipient
+   */
+  function updateProtocolFeeRecipient(address _protocolFeeRecipient) external onlyOwner {
+    protocolFeeRecipient = _protocolFeeRecipient;
+
+    emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
+  }
+
+  /**
   * @notice Returns the domain separator for the current chain (EIP-712)
   */
   function DOMAIN_SEPARATOR() external view returns(bytes32) {
     return _domainSeparatorV4();
+  }
+
+  function _validateTokenFlaggingMessage(ReservoirOracle.Message calldata message, address collection, uint256 tokenId) internal view {
+    // Validate the message
+    uint256 maxMessageAge = 5 minutes;
+    bytes32 tokenStruct = keccak256("Token(address contract,uint256 tokenId)");
+    bytes32 messageId = keccak256(abi.encode(tokenStruct, collection, tokenId));
+    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) revert ReservoirOracle.InvalidMessage(); 
+
+    (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
+    if (flaggedStatus) revert TokenFlagged();
   }
 
   /**
@@ -470,39 +477,28 @@ contract Dyve is
   */
   function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
       // Verify the signer is not address(0)
-      if (order.signer == address(0)) {
-        revert InvalidSigner();
-      } 
+      if (order.signer == address(0)) revert InvalidSigner(); 
 
       // Verify the order listing is not expired
-      if (order.endTime <= block.timestamp) {
-        revert ExpiredListing();
-      }
+      if (order.endTime <= block.timestamp) revert ExpiredListing(); 
 
       // Verify whether the nonce has expired
       if (
         _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce]
         || order.nonce < userMinOrderNonce[order.signer]
-      ) {
-        revert ExpiredNonce();
-      }
+      ) revert ExpiredNonce(); 
 
-      // Verify the fee and collateral are not 0
-      if (order.fee == 0) {
-        revert InvalidFee();
-      }
-      if (order.collateral == 0) {
-        revert InvalidCollateral();
-      }
+      // Verify the fee, collateral and duration are not 0
+      if (order.fee == 0) revert InvalidFee();
+      if (order.collateral == 0) revert InvalidCollateral();
+      if (order.duration == 0) revert InvalidDuration();
 
       // Verify that the currency is whitelisted
       if (
         order.orderType != OrderType.ETH_TO_ERC721
         && order.orderType != OrderType.ETH_TO_ERC1155
         && !(whitelistedCurrencies.isCurrencyWhitelisted(order.currency))
-      ) {
-        revert InvalidCurrency();
-      }
+      ) revert InvalidCurrency(); 
 
       // Verify the validity of the signature
       if (
@@ -511,8 +507,6 @@ contract Dyve is
               orderHash,
               order.signature
           ))
-      ) {
-        revert InvalidSignature();
-      }
+      ) revert InvalidSignature(); 
   }
 }
