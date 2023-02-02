@@ -2,7 +2,7 @@
 pragma solidity ^0.8.16;
 
 // Inspired by https://github.com/ZeframLou/trustus
-abstract contract ReservoirOracle {
+library ReservoirOracle {
     // --- Structs ---
 
     struct Message {
@@ -21,22 +21,13 @@ abstract contract ReservoirOracle {
     error InvalidSignatureLength();
     error InvalidMessage();
 
-    // --- Fields ---
-
-    address public RESERVOIR_ORACLE_ADDRESS;
-
-    // --- Constructor ---
-
-    constructor(address reservoirOracleAddress) {
-        RESERVOIR_ORACLE_ADDRESS = reservoirOracleAddress;
-    }
-
     // --- Internal methods ---
 
     function _verifyMessage(
         bytes32 id,
         uint256 validFor,
-        Message memory message
+        Message memory message,
+        address reservoirOracleAddress
     ) internal view returns (bool success) {
         // Ensure the message matches the requested id
         if (id != message.id) {
@@ -103,6 +94,6 @@ abstract contract ReservoirOracle {
         );
 
         // Ensure the signer matches the designated oracle address
-        return signerAddress == RESERVOIR_ORACLE_ADDRESS;
+        return signerAddress == reservoirOracleAddress;
     }
 }

@@ -1,6 +1,5 @@
 const { expect, use } = require("chai")
 const { ethers } = require("hardhat")
-const axios = require('axios')
 const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("./helpers")
 use(require('chai-as-promised'))
 
@@ -12,6 +11,11 @@ const ERC20_TO_ERC721 = 2
 const ERC20_TO_ERC1155 = 3
 const ERC721_TO_ERC20 = 4
 const ERC1155_TO_ERC20 = 5
+
+const EMPTY = 0
+const BORROWED = 1
+const EXPIRED = 2
+const CLOSED = 3
 
 let accounts;
 let owner;
@@ -49,19 +53,19 @@ beforeEach(async function () {
 describe("Dyve", function () {
   describe("Initial checks", function () {
     it("checks initial properties were set correctly", async () => {
-      const DOMAIN_SEPARATOR = keccak256(defaultAbiCoder.encode(
-        ["bytes32", "bytes32", "bytes32", "uint256", "address"],
-        [
-          solidityKeccak256(["string"], ["EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"]),
-          solidityKeccak256(["string"], ["Dyve"]),
-          solidityKeccak256(["string"], ["1"]),
-          31337,
-          dyve.address
-        ]
-      ))
+      const TestDyve = await ethers.getContractFactory("Dyve")
 
-      await expect(dyve.DOMAIN_SEPARATOR()).to.eventually.equal(DOMAIN_SEPARATOR)
+      await expect(TestDyve.deploy(ethers.constants.AddressZero, protocolFeeManager.address, reservoirOracleSigner.address, protocolFeeRecipient.address)).to.be.rejectedWith("InvalidAddress")
+      await expect(TestDyve.deploy(whitelistedCurrencies.address, ethers.constants.AddressZero, reservoirOracleSigner.address, protocolFeeRecipient.address)).to.be.rejectedWith("InvalidAddress")
+      await expect(TestDyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, ethers.constants.AddressZero, protocolFeeRecipient.address)).to.be.rejectedWith("InvalidAddress")
+      await expect(TestDyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracleSigner.address, ethers.constants.AddressZero)).to.be.rejectedWith("InvalidAddress")
+
+      const testDyve = await TestDyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracleSigner.address, protocolFeeRecipient.address)
+      const receipt = await testDyve.deployTransaction.wait()
+      const events = receipt.events.map(({ event }) => event)
+        
       await expect(dyve.protocolFeeRecipient()).to.eventually.equal(protocolFeeRecipient.address)
+      expect(events).deep.to.equal(["OwnershipTransferred", "WhitelistedCurrenciesUpdated", "ProtocolFeeManagerUpdated", "ProtocolFeeRecipientUpdated"])
     })
   })
 
@@ -120,7 +124,7 @@ describe("Dyve", function () {
       expect(order.expiryDateTime).to.equal(timestamp + data.duration);
       expect(order.collateral).to.equal(data.collateral);
       expect(order.currency).to.equal(ethers.constants.AddressZero);
-      expect(order.status).to.equal(0);
+      expect(order.status).to.equal(BORROWED);
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderFulfilled")
@@ -199,7 +203,7 @@ describe("Dyve", function () {
       expect(order.expiryDateTime).to.equal(timestamp + data.duration);
       expect(order.collateral).to.equal(data.collateral);
       expect(order.currency).to.equal(ethers.constants.AddressZero);
-      expect(order.status).to.equal(0);
+      expect(order.status).to.equal(BORROWED);
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderFulfilled")
@@ -281,7 +285,7 @@ describe("Dyve", function () {
       expect(order.expiryDateTime).to.equal(timestamp + data.duration);
       expect(order.collateral).to.equal(data.collateral);
       expect(order.currency).to.equal(mockUSDC.address);
-      expect(order.status).to.equal(0);
+      expect(order.status).to.equal(BORROWED);
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderFulfilled")
@@ -363,7 +367,7 @@ describe("Dyve", function () {
       expect(order.expiryDateTime).to.equal(timestamp + data.duration);
       expect(order.collateral).to.equal(data.collateral);
       expect(order.currency).to.equal(mockUSDC.address);
-      expect(order.status).to.equal(0);
+      expect(order.status).to.equal(BORROWED);
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderFulfilled")
@@ -445,7 +449,7 @@ describe("Dyve", function () {
       expect(order.expiryDateTime).to.equal(timestamp + data.duration);
       expect(order.collateral).to.equal(data.collateral);
       expect(order.currency).to.equal(mockUSDC.address);
-      expect(order.status).to.equal(0);
+      expect(order.status).to.equal(BORROWED);
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderFulfilled")
@@ -527,7 +531,7 @@ describe("Dyve", function () {
       expect(order.expiryDateTime).to.equal(timestamp + data.duration);
       expect(order.collateral).to.equal(data.collateral);
       expect(order.currency).to.equal(mockUSDC.address);
-      expect(order.status).to.equal(0);
+      expect(order.status).to.equal(BORROWED);
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderFulfilled")
@@ -635,9 +639,30 @@ describe("Dyve", function () {
       await expect(dyve.connect(addr1).fulfillOrder(collateralZeroMaker, message, { value: ethers.utils.parseEther("0.1") }))
         .to.be.rejectedWith("InvalidCollateral")
 
+      // duration is zero
+      const durationZeroMaker = { ...makerOrder, duration: 0 }
+      await expect(dyve.connect(addr1).fulfillOrder(durationZeroMaker, message, { value: ethers.utils.parseEther("1.1") }))
+        .to.be.rejectedWith("InvalidDuration")
+
+      // amount is zero for ERC1155
+      const amountZeroMaker = { ...makerOrder, orderType: ETH_TO_ERC1155, collection: mockERC1155.address, amount: 0 }
+      const amountZeroMessage = await constructMessage({ ...messageParams, contract: mockERC1155.address })
+      await expect(dyve.connect(addr1).fulfillOrder(amountZeroMaker, amountZeroMessage, { value: ethers.utils.parseEther("1.1") }))
+        .to.be.rejectedWith("InvalidAmount")
+
+      // amount is two for ERC721
+      const amountTwoMaker = { ...makerOrder, amount: 2 }
+      await expect(dyve.connect(addr1).fulfillOrder(amountTwoMaker, message, { value: ethers.utils.parseEther("1.1") }))
+        .to.be.rejectedWith("InvalidAmount")
+
       // currency is not whitelisted
       const nonWhitelistedCurrencyMaker = { ...makerOrder, currency: ethers.constants.AddressZero, orderType: ERC20_TO_ERC721 }
       await expect(dyve.connect(addr1).fulfillOrder(nonWhitelistedCurrencyMaker, message))
+        .to.be.rejectedWith("InvalidCurrency")
+
+      // currency is not whitelisted
+      const nonZeroAddressCurrencyMaker = { ...makerOrder, currency: mockUSDC.address }
+      await expect(dyve.connect(addr1).fulfillOrder(nonZeroAddressCurrencyMaker, message, { value: totalAmount }))
         .to.be.rejectedWith("InvalidCurrency")
 
       // invalid signature
@@ -697,7 +722,7 @@ describe("Dyve", function () {
 
       await expect(() => claimTx).to.changeEtherBalance(owner, ethers.utils.parseEther("1"));
       await expect(() => claimTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
-      expect(order.status).to.equal(1);
+      expect(order.status).to.equal(EXPIRED);
 
       await expect(claimTx)
       .to.emit(dyve, "Claim")
@@ -966,7 +991,7 @@ describe("Dyve", function () {
         await expect(() => closeTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("1"));
 
         await expect(mockERC721.ownerOf(1)).to.eventually.equal(owner.address);
-        expect(order.status).to.equal(2);
+        expect(order.status).to.equal(CLOSED);
 
         await expect(closeTx)
         .to.emit(dyve, "Close")
@@ -1038,7 +1063,7 @@ describe("Dyve", function () {
         await expect(() => closeTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("1"));
 
         await expect(mockERC1155.balanceOf(owner.address, 1)).to.eventually.equal(10);
-        expect(order.status).to.equal(2);
+        expect(order.status).to.equal(CLOSED);
 
         await expect(closeTx)
         .to.emit(dyve, "Close")
@@ -1112,7 +1137,7 @@ describe("Dyve", function () {
         await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.eq(ethers.utils.parseEther(String(30 - 0.1)));
 
         await expect(mockERC721.ownerOf(0)).to.eventually.equal(owner.address);
-        expect(order.status).to.equal(2);
+        expect(order.status).to.equal(CLOSED);
 
         await expect(closeTx)
         .to.emit(dyve, "Close")
@@ -1186,7 +1211,7 @@ describe("Dyve", function () {
         await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.eq(ethers.utils.parseEther(String(30 - 0.1)));
 
         await expect(mockERC1155.balanceOf(owner.address, 0)).to.eventually.equal(10);
-        expect(order.status).to.equal(2);
+        expect(order.status).to.equal(CLOSED);
 
         await expect(closeTx)
         .to.emit(dyve, "Close")
@@ -1253,11 +1278,17 @@ describe("Dyve", function () {
 
         // Borrower is not msg.sender
         await expect(dyve.closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage))
-          .to.be.rejectedWith("Order: Borrower must be the sender")
+          .to.be.revertedWithCustomError(dyve, "InvalidSender")
+          .withArgs(owner.address)
+
+        // Order is expired
+        await expect(dyve.closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage))
+          .to.be.revertedWithCustomError(dyve, "InvalidSender")
+          .withArgs(owner.address)
 
         // Borrower does not own the ERC721
         await expect(dyve.connect(addr1).closePosition(makerOrderHash, 2, nonFlaggedMessage))
-          .to.be.rejectedWith("Order: Borrower does not own the returning ERC721 token")
+          .to.be.rejectedWith("NotTokenOwner")
 
         // message id is invalid
         await expect(dyve.connect(addr1).closePosition(makerOrderHash, 1, nonFlaggedMessage))
@@ -1283,7 +1314,7 @@ describe("Dyve", function () {
 
         // Order is not active
         await expect(dyve.connect(addr1).closePosition(makerOrderHash, data.tokenId, nonFlaggedMessage))
-          .to.be.rejectedWith("Order: Order is not borrowed")
+          .to.be.rejectedWith("InvalidOrderStatus")
 
         // token is flagged
         const flaggedData = { ...data, signature, nonce: 101 } 
@@ -1362,7 +1393,7 @@ describe("Dyve", function () {
       // 0.1 = final lender fee after protocol fee cut
       await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1 + 1)))
       await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("0"))
-      expect(order.status).to.equal(1);
+      expect(order.status).to.equal(EXPIRED);
 
       await expect(claimTx)
       .to.emit(dyve, "Claim")
@@ -1419,11 +1450,12 @@ describe("Dyve", function () {
 
       // lender is not msg.sender
       await expect(dyve.connect(addr1).claimCollateral(makerOrderHash))   
-        .to.be.rejectedWith("Order: Lender must be the sender")
+        .to.be.revertedWithCustomError(dyve, "InvalidSender")
+        .withArgs(addr1.address)
       
       // Order is not expired
       await expect(dyve.claimCollateral(makerOrderHash))   
-        .to.be.rejectedWith("Order: Order is not expired")
+        .to.be.rejectedWith("InvalidOrderExpiration")
 
       // Order is not borrowed
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
@@ -1432,7 +1464,7 @@ describe("Dyve", function () {
       await claimTx.wait()
 
       await expect(dyve.claimCollateral(makerOrderHash))   
-        .to.be.rejectedWith("Order: Order is not borrowed")
+        .to.be.rejectedWith("InvalidOrderStatus")
     })
   })
 
@@ -1532,13 +1564,20 @@ describe("Dyve", function () {
     })
 
     it("checks validation for cancelMultipleMakerOrders", async () => {
-      const cancelTx = await dyve.cancelAllOrdersForSender(120);
+      const cancelTx = await dyve.cancelMultipleMakerOrders([0, 1, 2, 3]);
       await cancelTx.wait()
+
+      const cancelAllTx = await dyve.cancelAllOrdersForSender(120);
+      await cancelAllTx.wait()
 
       await expect(dyve.cancelMultipleMakerOrders([]))
         .to.be.rejectedWith("EmptyNonceArray")
       await expect(dyve.cancelMultipleMakerOrders([100]))
-        .to.be.rejectedWith("InvalidNonce")
+        .to.be.revertedWithCustomError(dyve, "InvalidNonce")
+        .withArgs(100)
+      await expect(dyve.cancelMultipleMakerOrders([0, 1, 2, 3]))
+        .to.be.revertedWithCustomError(dyve, "InvalidNonce")
+        .withArgs(0)
     })
   })
 
@@ -1578,6 +1617,10 @@ describe("Dyve", function () {
       await tx.wait()
 
       await expect(tx).to.emit(dyve, "ProtocolFeeManagerUpdated").withArgs(ethers.constants.AddressZero)
+    })
+
+    it("attempts to input an invalid protocol fee rate", async () => {
+      await expect(protocolFeeManager.updateProtocolFeeRate(10001)).to.be.rejectedWith("InvalidProtocolFeeRate")
     })
   })  
 
