@@ -15,6 +15,8 @@ contract ProtocolFeeManager is Ownable {
 
   mapping(address => uint256) public premiumCollections;
 
+  error InvalidProtocolFeeRate();
+
   event UpdatedCollectionFeeRate(address indexed collection, uint256 reducedFeeRate);
   event UpdatedProtocolFeeRate(uint256 protocolFeeRate);
 
@@ -39,6 +41,7 @@ contract ProtocolFeeManager is Ownable {
   * @param _protocolFeeRate the new protocol fee rate
   */
   function updateProtocolFeeRate(uint256 _protocolFeeRate) external onlyOwner {
+    if (_protocolFeeRate > 10000) revert InvalidProtocolFeeRate();
     protocolFeeRate = _protocolFeeRate;
 
     emit UpdatedProtocolFeeRate(_protocolFeeRate);

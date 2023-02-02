@@ -21,21 +21,22 @@ import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
 contract Dyve is 
-  ReservoirOracle,
   ReentrancyGuard,
   Ownable,
   EIP712("Dyve", "1")
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
+  using ReservoirOracle for ReservoirOracle.Message;
 
   IWhitelistedCurrencies public whitelistedCurrencies;
   IProtocolFeeManager public protocolFeeManager;
 
   address public protocolFeeRecipient;
-  bytes4 public constant INTERFACE_ID_ERC721 = 0x80ac58cd;
-  bytes4 public constant INTERFACE_ID_ERC1155 = 0xd9b67a26;
-  uint256 public constant nonceLimit = 500000; 
+  address public reservoirOracleAddress;
+  bytes4 public constant INTERFACE_ID_ERC721 = type(IERC721).interfaceId;
+  bytes4 public constant INTERFACE_ID_ERC1155 = type(IERC1155).interfaceId;
+  uint256 public constant nonceLimit = 500000;
 
   mapping(address => uint256) public userMinOrderNonce;
   mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
@@ -43,6 +44,7 @@ contract Dyve is
 
   // The NFT's listing status
   enum OrderStatus {
+    EMPTY,
     BORROWED,
     EXPIRED,
     CLOSED
@@ -62,9 +64,10 @@ contract Dyve is
     OrderStatus status;
   }
 
+  error InvalidAddress();
   error InvalidMinNonce();
   error EmptyNonceArray();
-  error InvalidNonce();
+  error InvalidNonce(uint256 nonce);
   error InvalidMsgValue();
 	error InvalidSigner();
 	error ExpiredListing();
@@ -72,14 +75,20 @@ contract Dyve is
 	error InvalidFee();
 	error InvalidCollateral();
 	error InvalidDuration();
+  error InvalidAmount();
 	error InvalidCurrency();
 	error InvalidSignature();
   error TokenFlagged();
+  error InvalidSender(address sender);
+  error InvalidOrderExpiration();
+  error InvalidOrderStatus();
+  error NotTokenOwner(address collection, uint256 tokenId);
 
   event CancelAllOrders(address indexed user, uint256 newMinNonce);
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
   event ProtocolFeeManagerUpdated(address indexed protocolFeeManagerAddress);
   event WhitelistedCurrenciesUpdated(address indexed whitelistedCurrenciesAddress);
+  event ReservoirOracleAddressUpdated(address indexed reservoirOracleAddress);
   event ProtocolFeeRecipientUpdated(address indexed _protocolFeeRecipient);
 
   event OrderFulfilled(
@@ -130,18 +139,30 @@ contract Dyve is
     * @notice Constructor
     * @param whitelistedCurrenciesAddress address of the WhitelistedCurrencies contract
     * @param protocolFeeManagerAddress address of the ProtocolFeeManager contract
-    * @param reservoirOracleAddress address of the Reservoir Oracle
+    * @param _reservoirOracleAddress address of the Reservoir Oracle
     * @param _protocolFeeRecipient protocol fee recipient address
     */
   constructor(
     address whitelistedCurrenciesAddress, 
     address protocolFeeManagerAddress, 
-    address reservoirOracleAddress, 
+    address _reservoirOracleAddress, 
     address _protocolFeeRecipient
-  ) ReservoirOracle(reservoirOracleAddress) {
+  ) {
+    if (
+      whitelistedCurrenciesAddress == address(0)
+      || protocolFeeManagerAddress == address(0)
+      || _reservoirOracleAddress == address(0)
+      || _protocolFeeRecipient == address(0)
+    ) revert InvalidAddress();
+
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
     protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
+    reservoirOracleAddress = _reservoirOracleAddress;
     protocolFeeRecipient = _protocolFeeRecipient;
+
+    emit WhitelistedCurrenciesUpdated(whitelistedCurrenciesAddress);
+    emit ProtocolFeeManagerUpdated(protocolFeeManagerAddress);
+    emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
   }
 
   /**
@@ -163,7 +184,8 @@ contract Dyve is
   function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external {
     if (orderNonces.length == 0) revert EmptyNonceArray();
     for (uint256 i = 0; i < orderNonces.length; i++) {
-      if (orderNonces[i] < userMinOrderNonce[msg.sender]) revert InvalidNonce();
+      if (orderNonces[i] < userMinOrderNonce[msg.sender]) revert InvalidNonce(orderNonces[i]);
+      if (_isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]]) revert InvalidNonce(orderNonces[i]);
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
     }
 
@@ -267,14 +289,14 @@ contract Dyve is
   */
   function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external {
     Order storage order = orders[orderHash];
-    require(order.borrower == msg.sender, "Order: Borrower must be the sender");
-    require(order.expiryDateTime > block.timestamp, "Order: Order expired");
-    require(order.status == OrderStatus.BORROWED, "Order: Order is not borrowed");
+    if (order.borrower != msg.sender) revert InvalidSender(msg.sender);
+    if (order.expiryDateTime <= block.timestamp) revert InvalidOrderExpiration();
+    if (order.status != OrderStatus.BORROWED) revert InvalidOrderStatus();
 
     if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)) {
-      require(IERC721(order.collection).ownerOf(returnTokenId) == msg.sender, "Order: Borrower does not own the returning ERC721 token");
+      if (IERC721(order.collection).ownerOf(returnTokenId) != msg.sender) revert NotTokenOwner(order.collection, returnTokenId);
     } else {
-      require(IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) >= order.amount, "Order: Borrower does not own the sufficient amount of ERC1155 tokens to return");
+      if (IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) < order.amount) revert NotTokenOwner(order.collection, returnTokenId);
     }
 
     _validateTokenFlaggingMessage(message, order.collection, returnTokenId);
@@ -291,7 +313,7 @@ contract Dyve is
     // 2. Transfer the collateral from dyve to the borrower
     if (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) {
       (bool success, ) = order.borrower.call{ value: order.collateral }("");
-      require(success, "Order: Collateral transfer to borrower failed");
+      require(success, "Collateral transfer to borrower failed");
     } else {
       IERC20(order.currency).safeTransfer(order.borrower, order.collateral);
     }
@@ -318,16 +340,16 @@ contract Dyve is
   function claimCollateral(bytes32 orderHash) external {
     Order storage order = orders[orderHash];
 
-    require(order.lender == msg.sender, "Order: Lender must be the sender");
-    require(order.expiryDateTime <= block.timestamp, "Order: Order is not expired");
-    require(order.status == OrderStatus.BORROWED, "Order: Order is not borrowed");
+    if (order.lender != msg.sender) revert InvalidSender(msg.sender);
+    if (order.expiryDateTime > block.timestamp) revert InvalidOrderExpiration();
+    if (order.status != OrderStatus.BORROWED) revert InvalidOrderStatus();
     
     order.status = OrderStatus.EXPIRED;
 
     // Transfer the collateral from dyve to the borrower
     if (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) {
       (bool success, ) = order.lender.call{ value: order.collateral }("");
-      require(success, "Order: Collateral transfer to lender failed");
+      require(success, "Collateral transfer to lender failed");
     } else {
       IERC20(order.currency).safeTransfer(order.lender, order.collateral);
     }
@@ -383,12 +405,14 @@ contract Dyve is
     bool success;
 
     // 1. Protocol fee transfer
-    (success, ) = payable(protocolFeeRecipient).call{ value: protocolFee }("");
-    require(success, "Order: Protocol fee transfer failed");
+    if (protocolFee != 0) {
+      (success, ) = payable(protocolFeeRecipient).call{ value: protocolFee }("");
+      require(success, "Protocol fee transfer failed");
+    }
 
     // 2. Lender fee transfer
     (success, ) = payable(to).call{ value: fee - protocolFee }("");
-    require(success, "Order: Lender fee transfer failed");
+    require(success, "Lender fee transfer failed");
   }
 
   /** 
@@ -412,8 +436,10 @@ contract Dyve is
   ) internal {
     uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / 10000;
 
-   // 1. Protocol fee transfer
-    IERC20(currency).safeTransferFrom(from, protocolFeeRecipient, protocolFee);
+    // 1. Protocol fee transfer
+    if (protocolFee != 0) {
+      IERC20(currency).safeTransferFrom(from, protocolFeeRecipient, protocolFee);
+    }
 
     // 2. Lender fee transfer
     IERC20(currency).safeTransferFrom(from, to, fee - protocolFee);
@@ -443,6 +469,16 @@ contract Dyve is
   }
 
   /**
+   * @notice updates the address of the ReservoirOracle Signer
+   * @param _reservoirOracleAddress the address of the ReservoirOracle Signer
+   */
+  function updateReservoirOracleAddress(address _reservoirOracleAddress) external onlyOwner {
+    reservoirOracleAddress = _reservoirOracleAddress;
+
+    emit ReservoirOracleAddressUpdated(_reservoirOracleAddress);
+  }
+
+  /**
    * @notice updates the ProtocolFeeRecipient instance
    * @param _protocolFeeRecipient the address of the new ProtocolFeeRecipient
    */
@@ -452,19 +488,12 @@ contract Dyve is
     emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
   }
 
-  /**
-  * @notice Returns the domain separator for the current chain (EIP-712)
-  */
-  function DOMAIN_SEPARATOR() external view returns(bytes32) {
-    return _domainSeparatorV4();
-  }
-
   function _validateTokenFlaggingMessage(ReservoirOracle.Message calldata message, address collection, uint256 tokenId) internal view {
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
     bytes32 tokenStruct = keccak256("Token(address contract,uint256 tokenId)");
     bytes32 messageId = keccak256(abi.encode(tokenStruct, collection, tokenId));
-    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message)) revert ReservoirOracle.InvalidMessage(); 
+    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, message, reservoirOracleAddress)) revert ReservoirOracle.InvalidMessage(); 
 
     (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
     if (flaggedStatus) revert TokenFlagged();
@@ -493,11 +522,30 @@ contract Dyve is
       if (order.collateral == 0) revert InvalidCollateral();
       if (order.duration == 0) revert InvalidDuration();
 
-      // Verify that the currency is whitelisted
+      // Verify that the amount is not 0 for ERC1155 orders
+      if (
+        IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC1155)
+        && order.amount == 0
+      ) revert InvalidAmount(); 
+
+      // Verify that the amount is equal to 1 for ERC721 orders
+      if (
+        IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)
+        && order.amount != 1
+      ) revert InvalidAmount(); 
+
+      // Verify that the currency is whitelisted for ERC20 orders
       if (
         order.orderType != OrderType.ETH_TO_ERC721
         && order.orderType != OrderType.ETH_TO_ERC1155
         && !(whitelistedCurrencies.isCurrencyWhitelisted(order.currency))
+      ) revert InvalidCurrency(); 
+
+      // Verify that the currency is zero address for ETH orders
+      if (
+        (order.orderType == OrderType.ETH_TO_ERC721
+        || order.orderType == OrderType.ETH_TO_ERC1155)
+        && order.currency != address(0)
       ) revert InvalidCurrency(); 
 
       // Verify the validity of the signature
