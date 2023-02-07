@@ -23,6 +23,7 @@ let addr1;
 let addr2;
 let addrs;
 let reservoirOracleSigner;
+let reservoirOracle;
 let protocolFeeRecipient;
 let weth;
 let mockUSDC;
@@ -46,7 +47,7 @@ beforeEach(async function () {
   reservoirOracleSigner = owner;
   protocolFeeRecipient = addr2;
 
-  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
+  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
   await tokenSetup([owner, addr1, addr2], weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve)
 });
 
@@ -1644,6 +1645,21 @@ describe("Dyve", function () {
       await tx.wait()
 
       await expect(tx).to.emit(dyve, "WhitelistedCurrenciesUpdated").withArgs(ethers.constants.AddressZero)
+    })
+  })
+
+  describe("Reservoir Oracle Contract functionality", function () {
+    it("updates the reservoir oracle address signer", async () => {
+      const tx = await reservoirOracle.updateReservoirOracleAddress(owner.address) 
+      await tx.wait()
+
+      await expect(reservoirOracle.reservoirOracleAddress()).to.eventually.equal(owner.address)
+    })
+
+    it("checks validation for the reservoir oracle contract", async () => {
+      const ReservoirOracle = await ethers.getContractFactory("ReservoirOracle");
+      await expect(ReservoirOracle.deploy(ethers.constants.AddressZero)).to.be.rejectedWith("InvalidReservoirOracleAddress")
+      await expect(reservoirOracle.updateReservoirOracleAddress(ethers.constants.AddressZero)).to.be.rejectedWith("InvalidReservoirOracleAddress")
     })
   })
 })

@@ -35,7 +35,7 @@ contract ReservoirOracle is Ownable {
     // --- Constructor ---
 
     constructor(address _reservoirOracleAddress) {
-        if (reservoirOracleAddress == address(0)) revert InvalidReservoirOracleAddress(); 
+        if (_reservoirOracleAddress == address(0)) revert InvalidReservoirOracleAddress(); 
         reservoirOracleAddress = _reservoirOracleAddress;
     }
 
