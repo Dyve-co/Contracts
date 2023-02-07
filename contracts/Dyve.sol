@@ -37,6 +37,7 @@ contract Dyve is
   bytes4 public constant INTERFACE_ID_ERC721 = type(IERC721).interfaceId;
   bytes4 public constant INTERFACE_ID_ERC1155 = type(IERC1155).interfaceId;
   uint256 public constant nonceLimit = 500000;
+  uint256 public constant bps = 10000;
 
   mapping(address => uint256) public userMinOrderNonce;
   mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
@@ -289,8 +290,8 @@ contract Dyve is
   * @param returnTokenId the NFT to be returned
   * @param message the message from the oracle
   */
-  function closePosition(bytes32 orderHash, uint256 returnTokenId, IReservoirOracle.Message calldata message) external {
-    Order storage order = orders[orderHash];
+  function closePosition(bytes32 orderHash, uint256 returnTokenId, IReservoirOracle.Message calldata message) external nonReentrant {
+    Order memory order = orders[orderHash];
     if (order.borrower != msg.sender) revert InvalidSender(msg.sender);
     if (order.expiryDateTime <= block.timestamp) revert InvalidOrderExpiration();
     if (order.status != OrderStatus.BORROWED) revert InvalidOrderStatus();
@@ -303,7 +304,7 @@ contract Dyve is
 
     _validateTokenFlaggingMessage(message, order.collection, returnTokenId);
 
-    order.status = OrderStatus.CLOSED;
+    orders[orderHash].status = OrderStatus.CLOSED;
 
     // 1. Transfer the NFT back to the lender
     if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)) {
@@ -331,7 +332,7 @@ contract Dyve is
       returnTokenId,
       order.collateral,
       order.currency,
-      order.status
+      OrderStatus.CLOSED
     );
   }
 
@@ -339,14 +340,14 @@ contract Dyve is
   * @notice Releases collateral to the lender for the expired borrow
   * @param orderHash order hash of the maker order
   */
-  function claimCollateral(bytes32 orderHash) external {
-    Order storage order = orders[orderHash];
+  function claimCollateral(bytes32 orderHash) external nonReentrant {
+    Order memory order = orders[orderHash];
 
     if (order.lender != msg.sender) revert InvalidSender(msg.sender);
     if (order.expiryDateTime > block.timestamp) revert InvalidOrderExpiration();
     if (order.status != OrderStatus.BORROWED) revert InvalidOrderStatus();
     
-    order.status = OrderStatus.EXPIRED;
+    orders[orderHash].status = OrderStatus.EXPIRED;
 
     // Transfer the collateral from dyve to the borrower
     if (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) {
@@ -366,7 +367,7 @@ contract Dyve is
       order.amount,
       order.collateral,
       order.currency,
-      order.status
+      OrderStatus.EXPIRED
     );
   }
 
@@ -403,7 +404,7 @@ contract Dyve is
   * @param premiumTokenId TokenId from the premium collection
   */
   function _transferETH(address to, uint256 fee, address premiumCollection, uint256 premiumTokenId) internal {
-    uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / 10000;
+    uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / bps;
     bool success;
 
     // 1. Protocol fee transfer
@@ -436,7 +437,7 @@ contract Dyve is
     address premiumCollection,
     uint256 premiumTokenId
   ) internal {
-    uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / 10000;
+    uint256 protocolFee = (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / bps;
 
     // 1. Protocol fee transfer
     if (protocolFee != 0) {
