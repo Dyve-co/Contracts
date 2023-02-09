@@ -188,7 +188,6 @@ contract Dyve is
     if (orderNonces.length == 0) revert EmptyNonceArray();
     for (uint256 i = 0; i < orderNonces.length; i++) {
       if (orderNonces[i] < userMinOrderNonce[msg.sender]) revert InvalidNonce(orderNonces[i]);
-      if (_isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]]) revert InvalidNonce(orderNonces[i]);
       _isUserOrderNonceExecutedOrCancelled[msg.sender][orderNonces[i]] = true;
     }
 

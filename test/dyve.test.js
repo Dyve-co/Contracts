@@ -1565,9 +1565,6 @@ describe("Dyve", function () {
     })
 
     it("checks validation for cancelMultipleMakerOrders", async () => {
-      const cancelTx = await dyve.cancelMultipleMakerOrders([0, 1, 2, 3]);
-      await cancelTx.wait()
-
       const cancelAllTx = await dyve.cancelAllOrdersForSender(120);
       await cancelAllTx.wait()
 
@@ -1576,9 +1573,6 @@ describe("Dyve", function () {
       await expect(dyve.cancelMultipleMakerOrders([100]))
         .to.be.revertedWithCustomError(dyve, "InvalidNonce")
         .withArgs(100)
-      await expect(dyve.cancelMultipleMakerOrders([0, 1, 2, 3]))
-        .to.be.revertedWithCustomError(dyve, "InvalidNonce")
-        .withArgs(0)
     })
   })
 
