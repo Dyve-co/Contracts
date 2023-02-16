@@ -14,7 +14,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 // Dyve contacts/interfaces/libraries
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
-import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
+import {ReservoirOracle} from "./libraries/ReservoirOracle.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 
 /**
@@ -27,10 +27,10 @@ contract Dyve is
 {
   using SafeERC20 for IERC20;
   using OrderTypes for OrderTypes.Order;
+  using ReservoirOracle for ReservoirOracle.Message;
 
   IWhitelistedCurrencies public whitelistedCurrencies;
   IProtocolFeeManager public protocolFeeManager;
-  IReservoirOracle public reservoirOracle;
 
   address public protocolFeeRecipient;
   address public reservoirOracleAddress;
@@ -90,7 +90,7 @@ contract Dyve is
   event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
   event ProtocolFeeManagerUpdated(address indexed protocolFeeManagerAddress);
   event WhitelistedCurrenciesUpdated(address indexed whitelistedCurrenciesAddress);
-  event ReservoirOracleUpdated(address indexed reservoirOracle);
+  event ReservoirOracleAddressUpdated(address indexed reservoirOracleAddress);
   event ProtocolFeeRecipientUpdated(address indexed _protocolFeeRecipient);
   event ReserovirOracleAddressUpadted(address indexed _reservoirOracleAddress);
 
@@ -160,7 +160,7 @@ contract Dyve is
 
     whitelistedCurrencies = IWhitelistedCurrencies(whitelistedCurrenciesAddress); 
     protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
-    reservoirOracle = IReservoirOracle(_reservoirOracleAddress);
+    reservoirOracleAddress = _reservoirOracleAddress;
     protocolFeeRecipient = _protocolFeeRecipient;
 
     emit WhitelistedCurrenciesUpdated(whitelistedCurrenciesAddress);
@@ -199,7 +199,7 @@ contract Dyve is
   * @param order the order to be fulfilled
   * @param message the message from the oracle
   */
-  function fulfillOrder(OrderTypes.Order calldata order, IReservoirOracle.Message calldata message)
+  function fulfillOrder(OrderTypes.Order calldata order, ReservoirOracle.Message calldata message)
       external
       payable
       nonReentrant
@@ -289,7 +289,7 @@ contract Dyve is
   * @param returnTokenId the NFT to be returned
   * @param message the message from the oracle
   */
-  function closePosition(bytes32 orderHash, uint256 returnTokenId, IReservoirOracle.Message calldata message) external nonReentrant {
+  function closePosition(bytes32 orderHash, uint256 returnTokenId, ReservoirOracle.Message calldata message) external nonReentrant {
     Order memory order = orders[orderHash];
     if (order.borrower != msg.sender) revert InvalidSender(msg.sender);
     if (order.expiryDateTime <= block.timestamp) revert InvalidOrderExpiration();
@@ -472,12 +472,12 @@ contract Dyve is
 
   /**
    * @notice updates the address of the ReservoirOracle Signer
-   * @param _reservoirOracle the address of the ReservoirOracle Signer
+   * @param _reservoirOracleAddress the address of the ReservoirOracle Signer
    */
-  function updateReservoirOracle(address _reservoirOracle) external onlyOwner {
-    reservoirOracle = IReservoirOracle(_reservoirOracle);
+  function updateReservoirOracleAddress(address _reservoirOracleAddress) external onlyOwner {
+    reservoirOracleAddress = _reservoirOracleAddress;
 
-    emit ReservoirOracleUpdated(_reservoirOracle);
+    emit ReservoirOracleAddressUpdated(_reservoirOracleAddress);
   }
 
   /**
@@ -490,12 +490,12 @@ contract Dyve is
     emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
   }
 
-  function _validateTokenFlaggingMessage(IReservoirOracle.Message calldata message, address collection, uint256 tokenId) internal view {
+  function _validateTokenFlaggingMessage(ReservoirOracle.Message calldata message, address collection, uint256 tokenId) internal view {
     // Validate the message
     uint256 maxMessageAge = 5 minutes;
     bytes32 tokenStruct = keccak256("Token(address contract,uint256 tokenId)");
     bytes32 messageId = keccak256(abi.encode(tokenStruct, collection, tokenId));
-    if (!reservoirOracle.verifyMessage(messageId, maxMessageAge, message)) revert InvalidMessage(); 
+    if (!ReservoirOracle._verifyMessage(messageId, maxMessageAge, reservoirOracleAddress, message)) revert InvalidMessage(); 
 
     (bool flaggedStatus, /* uint256 */) = abi.decode(message.payload, (bool, uint256)); 
     if (flaggedStatus) revert TokenFlagged();

@@ -3,8 +3,6 @@ const { ethers } = require("hardhat")
 const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("./helpers")
 use(require('chai-as-promised'))
 
-const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
-
 const ETH_TO_ERC721 = 0
 const ETH_TO_ERC1155 = 1
 const ERC20_TO_ERC721 = 2
@@ -47,7 +45,7 @@ beforeEach(async function () {
   reservoirOracleSigner = owner;
   protocolFeeRecipient = addr2;
 
-  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
+  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
   await tokenSetup([owner, addr1, addr2], weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve)
 });
 
@@ -67,6 +65,13 @@ describe("Dyve", function () {
         
       await expect(dyve.protocolFeeRecipient()).to.eventually.equal(protocolFeeRecipient.address)
       expect(events).deep.to.equal(["OwnershipTransferred", "WhitelistedCurrenciesUpdated", "ProtocolFeeManagerUpdated", "ProtocolFeeRecipientUpdated"])
+    })
+
+    it("updates the ProtocolFeeManager in the Dyve contract", async () => {
+      const tx = await dyve.updateProtocolFeeRecipient(ethers.constants.AddressZero)
+      await tx.wait()
+
+      await expect(tx).to.emit(dyve, "ProtocolFeeRecipientUpdated").withArgs(ethers.constants.AddressZero)
     })
   })
 
@@ -1644,16 +1649,10 @@ describe("Dyve", function () {
 
   describe("Reservoir Oracle Contract functionality", function () {
     it("updates the reservoir oracle address signer", async () => {
-      const tx = await reservoirOracle.updateReservoirOracleAddress(owner.address) 
+      const tx = await dyve.updateReservoirOracleAddress(owner.address)
       await tx.wait()
 
-      await expect(reservoirOracle.reservoirOracleAddress()).to.eventually.equal(owner.address)
-    })
-
-    it("checks validation for the reservoir oracle contract", async () => {
-      const ReservoirOracle = await ethers.getContractFactory("ReservoirOracle");
-      await expect(ReservoirOracle.deploy(ethers.constants.AddressZero)).to.be.rejectedWith("InvalidReservoirOracleAddress")
-      await expect(reservoirOracle.updateReservoirOracleAddress(ethers.constants.AddressZero)).to.be.rejectedWith("InvalidReservoirOracleAddress")
+      await expect(dyve.reservoirOracleAddress()).to.eventually.equal(owner.address)
     })
   })
 })
