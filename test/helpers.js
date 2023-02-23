@@ -32,11 +32,15 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   const protocolFeeManager = await ProtocolFeeManager.deploy(0);
   await protocolFeeManager.deployed();
 
+  const ReservoirOracle = await ethers.getContractFactory("ReservoirOracle");
+  const reservoirOracle = await ReservoirOracle.deploy(reservoirOracleSigner.address);
+  await reservoirOracle.deployed();
+
   const Dyve = await ethers.getContractFactory("Dyve");
-  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracleSigner.address, protocolFeeRecipient.address);
+  const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracle.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
-  return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve];
+  return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, dyve];
 } 
 
 const tokenSetup = async (users, weth, mockERC20, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve) => {

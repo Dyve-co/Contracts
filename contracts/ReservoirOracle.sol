@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
+// OZ libraries
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
 // Inspired by https://github.com/ZeframLou/trustus
-library ReservoirOracle {
+contract ReservoirOracle is Ownable {
+    // --- State --- 
+
+    address public reservoirOracleAddress;
+
     // --- Structs ---
 
     struct Message {
@@ -21,13 +28,31 @@ library ReservoirOracle {
     error InvalidSignatureLength();
     error InvalidReservoirOracleAddress();
 
+    // --- Events ---
+    
+    event ReservoirOracleAddressUpdated(address indexed reservoirOracleAddress);
+
+    // --- Constructor ---
+
+    constructor(address _reservoirOracleAddress) {
+        if (_reservoirOracleAddress == address(0)) revert InvalidReservoirOracleAddress(); 
+        reservoirOracleAddress = _reservoirOracleAddress;
+    }
+
     // --- Methods ---
-    function _verifyMessage(
+
+    function updateReservoirOracleAddress(address _reservoirOracleAddress) external onlyOwner {
+        if (_reservoirOracleAddress == address(0)) revert InvalidReservoirOracleAddress(); 
+        reservoirOracleAddress = _reservoirOracleAddress;
+
+        emit ReservoirOracleAddressUpdated(_reservoirOracleAddress);
+    }
+
+    function verifyMessage(
         bytes32 id,
         uint256 validFor,
-        address reservoirOracleAddress,
         Message memory message
-    ) internal view returns (bool success) {
+    ) external view returns (bool success) {
         // Ensure the message matches the requested id
         if (id != message.id) {
             revert InvalidId();
