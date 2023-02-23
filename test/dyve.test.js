@@ -3,6 +3,8 @@ const { ethers } = require("hardhat")
 const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("./helpers")
 use(require('chai-as-promised'))
 
+const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
+
 const ETH_TO_ERC721 = 0
 const ETH_TO_ERC1155 = 1
 const ERC20_TO_ERC721 = 2
@@ -45,7 +47,7 @@ beforeEach(async function () {
   reservoirOracleSigner = owner;
   protocolFeeRecipient = addr2;
 
-  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
+  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
   await tokenSetup([owner, addr1, addr2], weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve)
 });
 
@@ -65,13 +67,6 @@ describe("Dyve", function () {
         
       await expect(dyve.protocolFeeRecipient()).to.eventually.equal(protocolFeeRecipient.address)
       expect(events).deep.to.equal(["OwnershipTransferred", "WhitelistedCurrenciesUpdated", "ProtocolFeeManagerUpdated", "ProtocolFeeRecipientUpdated"])
-    })
-
-    it("updates the ProtocolFeeManager in the Dyve contract", async () => {
-      const tx = await dyve.updateProtocolFeeRecipient(ethers.constants.AddressZero)
-      await tx.wait()
-
-      await expect(tx).to.emit(dyve, "ProtocolFeeRecipientUpdated").withArgs(ethers.constants.AddressZero)
     })
   })
 
@@ -683,69 +678,7 @@ describe("Dyve", function () {
     })
   })
 
-  describe("Premium collections functionality", function () {
-    it("consumes Maker Bid Listing (using ETH) then the lender claims the collateral", async () => {
-      const data = {
-        orderType: ETH_TO_ERC721,
-        signer: owner.address,
-        collection: mockERC721.address,
-        tokenId: 0,
-        amount: 1,
-        duration: 100,
-        collateral: ethers.utils.parseEther("1").toString(),
-        fee: ethers.utils.parseEther("0.1").toString(),
-        currency: ethers.constants.AddressZero,
-        nonce: 100,
-        premiumCollection: ethers.constants.AddressZero,
-        premiumTokenId: 0,
-        startTime: Math.floor(Date.now() / 1000),
-        endTime: Math.floor(Date.now() / 1000) + 86400,
-      }
-
-      const signature = await generateSignature(data, owner, dyve)
-      const makerOrder = { ...data, signature }
-
-      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
-      const message = await constructMessage({ 
-        contract: mockERC721.address,
-        tokenId: 0,
-        isFlagged: false,
-        timestamp: fulfillOrderTimestamp - 10,
-        signer: reservoirOracleSigner,
-      })
-
-      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1") })
-      await borrowTx.wait();
-
-      const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
-      await ethers.provider.send("evm_mine", [timestamp + 110]);
-
-      const makerOrderHash = computeOrderHash(data);
-      const claimTx = await dyve.claimCollateral(makerOrderHash);
-      await claimTx.wait();
-
-      const order = await dyve.orders(makerOrderHash);
-
-      await expect(() => claimTx).to.changeEtherBalance(owner, ethers.utils.parseEther("1"));
-      await expect(() => claimTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
-      expect(order.status).to.equal(EXPIRED);
-
-      await expect(claimTx)
-      .to.emit(dyve, "Claim")
-      .withArgs(
-        order.orderHash,
-        order.orderType,
-        order.borrower,
-        order.lender,
-        order.collection,
-        order.tokenId,
-        order.amount,
-        order.collateral,
-        order.currency,
-        order.status,
-      )
-    })
-
+  describe("Premium collections functionality", function () { 
     it("consumes maker ask (listing ERC721) with taker bid using USDC and the maker owns an NFT from a premium collection with zero fees", async () => {
       const data = {
         orderType: ERC20_TO_ERC721,
@@ -792,6 +725,94 @@ describe("Dyve", function () {
       await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"))
     })
 
+   it("consumes maker ask (listing ERC721) with taker bid using ETH and the maker owns an NFT from a premium collection with zero fees", async () => {
+      const data = {
+        orderType: ETH_TO_ERC721,
+        signer: owner.address,
+        collection: mockERC721.address,
+        tokenId: 0,
+        amount: 1,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: ethers.constants.AddressZero,
+        nonce: 100,
+        premiumCollection: premiumCollection.address,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+      }
+
+      const mintTx = await premiumCollection.mint();
+      await mintTx.wait()
+
+      const signature = await generateSignature(data, owner, dyve)
+      const makerOrder = { ...data, signature }
+
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1").toString() })
+      await borrowTx.wait()
+
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(() => borrowTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("1"));
+      await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther("0.1"));
+      await expect(() => borrowTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("-1.1"));
+      await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther("0"));
+    })
+
+    it("consumes maker ask (listing ERC721) with taker bid using ETH and the maker owns an NFT from a premium collection with non-zero fees", async () => {
+      const data = {
+        orderType: ETH_TO_ERC721,
+        signer: owner.address,
+        collection: mockERC721.address,
+        tokenId: 0,
+        amount: 1,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: ethers.constants.AddressZero,
+        nonce: 100,
+        premiumCollection: premiumCollection.address,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+      }
+
+      const mintTx = await premiumCollection.mint();
+      await mintTx.wait()
+
+      const addPremiumCollectionTx = await protocolFeeManager.updateCollectionFeeRate(premiumCollection.address, 100)
+      await addPremiumCollectionTx.wait()
+
+      const signature = await generateSignature(data, owner, dyve)
+      const makerOrder = { ...data, signature }
+
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1").toString() })
+      await borrowTx.wait()
+
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(() => borrowTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("1"));
+      await expect(() => borrowTx).to.changeEtherBalance(owner, ethers.utils.parseEther(String(0.1 * 0.99)));
+      await expect(() => borrowTx).to.changeEtherBalance(addr1, ethers.utils.parseEther("-1.1"));
+      await expect(() => borrowTx).to.changeEtherBalance(protocolFeeRecipient, ethers.utils.parseEther(String(0.1 * 0.01)));
+    })
 
     it("consumes maker ask (listing ERC721) with taker bid using USDC and the maker owns an NFT from a premium collection with non-zero fees", async () => {
       const data = {
@@ -1348,6 +1369,68 @@ describe("Dyve", function () {
   })
 
   describe("Claim collateral functionality", function () {
+    it("consumes Maker Bid Listing (using ETH) then the lender claims the collateral", async () => {
+      const data = {
+        orderType: ETH_TO_ERC721,
+        signer: owner.address,
+        collection: mockERC721.address,
+        tokenId: 0,
+        amount: 1,
+        duration: 100,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: ethers.constants.AddressZero,
+        nonce: 100,
+        premiumCollection: ethers.constants.AddressZero,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+      }
+
+      const signature = await generateSignature(data, owner, dyve)
+      const makerOrder = { ...data, signature }
+
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const borrowTx = await dyve.connect(addr1).fulfillOrder(makerOrder, message, { value: ethers.utils.parseEther("1.1") })
+      await borrowTx.wait();
+
+      const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
+      await ethers.provider.send("evm_mine", [timestamp + 110]);
+
+      const makerOrderHash = computeOrderHash(data);
+      const claimTx = await dyve.claimCollateral(makerOrderHash);
+      await claimTx.wait();
+
+      const order = await dyve.orders(makerOrderHash);
+
+      await expect(() => claimTx).to.changeEtherBalance(owner, ethers.utils.parseEther("1"));
+      await expect(() => claimTx).to.changeEtherBalance(dyve, ethers.utils.parseEther("-1"));
+      expect(order.status).to.equal(EXPIRED);
+
+      await expect(claimTx)
+      .to.emit(dyve, "Claim")
+      .withArgs(
+        order.orderHash,
+        order.orderType,
+        order.borrower,
+        order.lender,
+        order.collection,
+        order.tokenId,
+        order.amount,
+        order.collateral,
+        order.currency,
+        order.status,
+      )
+    })
+  
     it("consumes Maker Bid Listing (using USDC) then the lender claims the collateral", async () => {
       const data = {
         orderType: ERC20_TO_ERC721,
@@ -1649,10 +1732,32 @@ describe("Dyve", function () {
 
   describe("Reservoir Oracle Contract functionality", function () {
     it("updates the reservoir oracle address signer", async () => {
-      const tx = await dyve.updateReservoirOracleAddress(owner.address)
+      const tx = await reservoirOracle.updateReservoirOracleAddress(owner.address) 
       await tx.wait()
 
-      await expect(dyve.reservoirOracleAddress()).to.eventually.equal(owner.address)
+      await expect(reservoirOracle.reservoirOracleAddress()).to.eventually.equal(owner.address)
+    })
+
+    it("checks validation for the reservoir oracle contract", async () => {
+      const ReservoirOracle = await ethers.getContractFactory("ReservoirOracle");
+      await expect(ReservoirOracle.deploy(ethers.constants.AddressZero)).to.be.rejectedWith("InvalidReservoirOracleAddress")
+      await expect(reservoirOracle.updateReservoirOracleAddress(ethers.constants.AddressZero)).to.be.rejectedWith("InvalidReservoirOracleAddress")
+    })
+
+    it("updates the ReservoirOracle Contract functionality", async () => {
+      const tx = await dyve.updateReservoirOracle(ethers.constants.AddressZero)
+      await tx.wait()
+
+      await expect(tx).to.emit(dyve, "ReservoirOracleUpdated").withArgs(ethers.constants.AddressZero)
+    })
+  })
+
+  describe("Protocol Fee Recipient functionality", function () {
+    it("updates the ProtocolFeeManager in the Dyve contract", async () => {
+      const tx = await dyve.updateProtocolFeeRecipient(ethers.constants.AddressZero)
+      await tx.wait()
+
+      await expect(tx).to.emit(dyve, "ProtocolFeeRecipientUpdated").withArgs(ethers.constants.AddressZero)
     })
   })
 })

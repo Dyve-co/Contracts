@@ -38,6 +38,7 @@ contract ProtocolFeeManager is Ownable {
 
   /**
   * @notice updates the protocol fee rate
+  * @dev cannot be set to a value greater than 10000 (100%)
   * @param _protocolFeeRate the new protocol fee rate
   */
   function updateProtocolFeeRate(uint256 _protocolFeeRate) external onlyOwner {

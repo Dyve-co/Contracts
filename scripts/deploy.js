@@ -13,15 +13,20 @@ async function main() {
   console.log("Whitelisted Currencies deployed: ", whitelistedCurrencies.address)
 
   const ProtocolFeeManager = await ethers.getContractFactory("ProtocolFeeManager");
-  const protocolFeeManager = await ProtocolFeeManager.deploy(0);
+  const protocolFeeManager = await ProtocolFeeManager.deploy(1000);
   await protocolFeeManager.deployed();
   console.log("Protocol Fee Manager deployed: ", protocolFeeManager.address)
+
+  const ReservoirOracle = await ethers.getContractFactory("ReservoirOracle");
+  const reservoirOracle = await ReservoirOracle.deploy("0xAeB1D03929bF87F69888f381e73FBf75753d75AF");
+  await reservoirOracle.deployed();
+  console.log("Reservoir Oracle deployed: ", reservoirOracle.address)
 
   const Dyve = await ethers.getContractFactory("Dyve");
   const dyve = await Dyve.deploy(
     whitelistedCurrencies.address, 
     protocolFeeManager.address, 
-    "0xAeB1D03929bF87F69888f381e73FBf75753d75AF",
+    reservoirOracle.address,
     addresses.FEE_RECIPIENT
   );
   const tx = await dyve.deployTransaction.wait();
