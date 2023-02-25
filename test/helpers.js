@@ -3,6 +3,15 @@ const { constants } = require('ethers')
 const { orderType, messageType } = require("./types")
 const { solidityKeccak256, keccak256, defaultAbiCoder, parseEther, _TypedDataEncoder, arrayify } = ethers.utils;
 
+const orderTypeMapping = {
+  ETH_TO_ERC721: 0,
+  ETH_TO_ERC1155: 1,
+  ERC20_TO_ERC721: 2,
+  ERC20_TO_ERC1155: 3,
+  ERC721_TO_ERC20: 4,
+  ERC1155_TO_ERC20: 5,
+} 
+
 const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   const WETH = await ethers.getContractFactory("WETH");
   const weth = await WETH.deploy();
@@ -17,7 +26,7 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   await mockERC721.deployed();
 
   const MockERC1155 = await ethers.getContractFactory("MockERC1155");
-  const mockERC1155 = await MockERC1155.deploy();
+  const mockERC1155 = await MockERC1155.deploy("mockERC1155", "mockERC1155", "URI");
   await mockERC1155.deployed();
 
   const PremiumCollection = await ethers.getContractFactory("MockERC721");
@@ -44,7 +53,9 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
 } 
 
 const tokenSetup = async (users, weth, mockERC20, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve) => {
-  await Promise.all(users.map(async (user, index) => {
+  await Promise.all(users.map(async(user, index) => {
+  // let index = 0
+  // for (user of users) {
     // Each user gets 30 WETH
     await weth.connect(user).deposit({ value: parseEther("30") });
 
@@ -74,6 +85,8 @@ const tokenSetup = async (users, weth, mockERC20, mockERC721, mockERC1155, premi
 
     // Add premium mock ERC721 to collection whitelist
     await protocolFeeManager.updateCollectionFeeRate(premiumCollection.address, 1);
+
+    // index++
   }))
 }
 
@@ -177,10 +190,32 @@ const constructMessage = async ({ contract, tokenId, isFlagged, timestamp, signe
   return message
 }
 
+const generateOrder = (input) => {
+  const order = {
+    orderType: orderTypeMapping[input.orderType],
+    signer: input.signer,
+    collection: input.collection,
+    tokenId: input.tokenId,
+    amount: input.amount,
+    duration: input.duration,
+    collateral: input.collateral,
+    fee: input.fee,
+    currency: input.currency,
+    premiumCollection: input.premiumCollection,
+    premiumTokenId: input.premiumTokenId,
+    nonce: input.nonce,
+    endTime: Math.floor(input.endTime.getTime() / 1000),
+    signature: input.signature,
+  }
+
+  return order
+}
+
 module.exports = {
   setup,
   tokenSetup,
   generateSignature,
+  generateOrder,
   generateOracleSignature,
   computeOrderHash,
   constructMessage,

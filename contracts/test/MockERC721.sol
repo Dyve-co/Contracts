@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract MockERC721 is ERC721 {
     using Strings for uint256;
+    uint256 public maxSupply = 10000;
 
     event MintEvent(address indexed minter, uint256 tokenId);
 
@@ -17,8 +18,9 @@ contract MockERC721 is ERC721 {
     }
 
     function mint() public {
+        require(counter < maxSupply, "max supply reached");
         _safeMint(msg.sender, counter);
-        counter += 1;
+        counter++;
 
         emit MintEvent(msg.sender, counter);
     }

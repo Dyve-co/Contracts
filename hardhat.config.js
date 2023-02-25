@@ -2,6 +2,7 @@ require('dotenv').config()
 require("@nomicfoundation/hardhat-toolbox");
 require("solidity-coverage");
 require("hardhat-gas-reporter");
+require("hardhat-dependency-compiler");
 
 // Gas estimation calculation
 // (gas units) * (gas price per unit) = gas fee in gwei
@@ -22,6 +23,13 @@ module.exports = {
   gasReporter: {
     enabled: false,
   },
+  // dependencyCompiler: {
+  //   paths: [
+  //     './ProtocolFeeManager.sol',
+  //     './ReservoirOracle.sol',
+  //     './WhitelistedCurrencies.sol',
+  //   ],
+  // },
   networks: {
     rinkeby: {
       url: `https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,

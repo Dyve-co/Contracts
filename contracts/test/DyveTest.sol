@@ -12,15 +12,20 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Dyve contacts/interfaces/libraries
-import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
-import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
-import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
-import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
+import {IWhitelistedCurrencies} from "../interfaces/IWhitelistedCurrencies.sol";
+import {IProtocolFeeManager} from "../interfaces/IProtocolFeeManager.sol";
+import {IReservoirOracle} from "../interfaces/IReservoirOracle.sol";
+import {OrderTypes, OrderType} from "../libraries/OrderTypes.sol";
+
+// dummy imports
+import "../ProtocolFeeManager.sol";
+import "../ReservoirOracle.sol";
+import "../WhitelistedCurrencies.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
-contract Dyve is 
+contract DyveTest is 
   ReentrancyGuard,
   Ownable,
   EIP712("Dyve", "1")
