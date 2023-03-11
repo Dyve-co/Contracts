@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
-const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("../../test/helpers")
+const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage, snakeToCamel, toSqlDateTime } = require("../../test/helpers")
 const s = require('./setup.json')
-const pool = require('./pg');
+const pool = require('./mysql');
 
 async function main() {
   const [owner] = await ethers.getSigners();
@@ -9,10 +9,12 @@ async function main() {
   const dyve = await Dyve.attach(s.dyve.address)
   await dyve.deployed()
 
-  const { rows: [dbOrder] } = await pool.query(
-    `select * from "Orderbook" where signer = $1 ORDER BY nonce DESC LIMIT 1`,
+  let dbOrder
+  [[dbOrder]] = await pool.query(
+    `select * from orderbook where signer = ? ORDER BY nonce DESC LIMIT 1`,
     [owner.address]
   )
+  dbOrder = snakeToCamel(dbOrder)
 
   const startTime = new Date()
   const endTime = new Date(startTime.getTime() + 86400000)
@@ -20,7 +22,7 @@ async function main() {
     orderType: s.ETH_TO_ERC721,
     signer: owner.address,
     collection: s.mockERC721.address,
-    tokenId: (dbOrder?.tokenId ?? 0) + 1,
+    tokenId: dbOrder?.tokenId ? Number(dbOrder.tokenId.toString()) + 1 : 1,
     amount: 1,
     duration: 10800,
     collateral: ethers.utils.parseEther("1").toString(),
@@ -34,6 +36,11 @@ async function main() {
   }
   const signature = await generateSignature(data, owner, dyve)
 
+  console.log("end time iso string: ", endTime.toISOString())
+  console.log("end time mysql: ", endTime.toISOString().slice(0, 19).replace('T', ' '))
+  console.log("=====================================")
+  console.log("end time seconds solidity: ", Math.floor(endTime.getTime() / 1000))
+
   const order = { 
     ...data,
     signature,
@@ -41,13 +48,14 @@ async function main() {
     status: 'LISTED',
     tokenType: 'erc721',
     orderType: 'ETH_TO_ERC721',
-    startTime: startTime.toISOString(),
-    endTime: endTime.toISOString(),
+    startTime: toSqlDateTime(startTime),
+    endTime: toSqlDateTime(endTime),
+    floorPrice: ethers.utils.parseEther("1").toString(),
   }
 
   await pool.query(
-    `INSERT INTO "Orderbook"("orderHash", "orderType", signer, collection, "tokenId", amount, duration, collateral, fee, currency, status, nonce, "startTime", "endTime", "tokenType", "signature") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-    [order.orderHash, order.orderType, order.signer, order.collection, order.tokenId, order.amount, order.duration, order.collateral, order.fee, order.currency, order.status, order.nonce, order.startTime, order.endTime, order.tokenType, signature],
+    `INSERT INTO orderbook(order_hash, order_type, signer, collection, token_id, amount, duration, collateral, fee, currency, status, nonce, start_time, end_time, token_type, signature, floor_price) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [order.orderHash, order.orderType, order.signer, order.collection, order.tokenId, order.amount, order.duration, order.collateral, order.fee, order.currency, order.status, order.nonce, order.startTime, order.endTime, order.tokenType, signature, order.floorPrice],
   )
 
   console.log("created listing")

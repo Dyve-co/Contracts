@@ -211,6 +211,26 @@ const generateOrder = (input) => {
   return order
 }
 
+const snakeToCamel = input => Object.keys(input ?? {}).reduce((acc, key) => ({
+  ...acc,
+  [key.toLowerCase().replace(/([-_][a-z])/g, group =>
+    group
+      .toUpperCase()
+      .replace('-', '')
+      .replace('_', '')
+  )]: input[key],
+}), {})
+
+// TODO: This shouldn't work. It only works in this node env cause of some weird timezone offset thing
+// leave it be, but use the code with caution
+const toSqlDateTime = (date) => {
+  const dateWithOffset = new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
+  return dateWithOffset
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ')
+}
+
 module.exports = {
   setup,
   tokenSetup,
@@ -219,4 +239,6 @@ module.exports = {
   generateOracleSignature,
   computeOrderHash,
   constructMessage,
+  snakeToCamel,
+  toSqlDateTime,
 }

@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
-const { setup, tokenSetup, generateOrder, generateSignature, computeOrderHash, constructMessage } = require("../../test/helpers")
+const { setup, tokenSetup, generateOrder, generateSignature, computeOrderHash, constructMessage, snakeToCamel } = require("../../test/helpers")
 const s = require('./setup.json')
-const pool = require('./pg');
+const pool = require('./mysql');
 
 async function main() {
   const [owner, addr1] = await ethers.getSigners();
@@ -13,15 +13,19 @@ async function main() {
     Math.floor(Date.now() / 1000) + 10,
   ]);
   await network.provider.send("evm_mine");
-
-  const { rows: [data] } = await pool.query(
-    `select * from "Orderbook" where signer = $1 AND status = 'BORROWED' ORDER BY nonce DESC LIMIT 1`,
+  
+  let data
+  let takerData
+  [[data]] = await pool.query(
+    `select * from orderbook where signer = ? AND status = 'BORROWED' ORDER BY nonce DESC LIMIT 1`,
     [owner.address]
-  )
-  const { rows: [takerData] } = await pool.query(
-    `select * from "Orderbook" where taker = $1 AND "returnTokenId" IS NOT NULL ORDER BY nonce DESC LIMIT 1`,
+  );
+  [[takerData]] = await pool.query(
+    `select * from orderbook where taker = ? AND "returnTokenId" IS NOT NULL ORDER BY nonce DESC LIMIT 1`,
     [addr1.address]
-  )
+  );
+  data = snakeToCamel(data)
+  takerData = snakeToCamel(takerData)
   console.log("taker data: ", takerData)
 
   const { timestamp } = await ethers.provider.getBlock('latest');
@@ -36,7 +40,6 @@ async function main() {
   console.log("block timestamp: ", timestamp)
   console.log("message: ", message)
   console.log("")
-
 
   const closeTx = await dyve.connect(addr1).closePosition(data.orderHash, (takerData?.returnTokenId ?? 49) + 1, message);
   await closeTx.wait();
