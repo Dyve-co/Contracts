@@ -1,7 +1,6 @@
 const hre = require("hardhat");
 const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("../../test/helpers")
 const fs = require('fs')
-const pool = require('./pg');
 
 async function main() {
   accounts = await ethers.getSigners(); 

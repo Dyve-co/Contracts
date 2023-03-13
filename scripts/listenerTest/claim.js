@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
-const { setup, tokenSetup, generateOrder, generateSignature, computeOrderHash, constructMessage } = require("../../test/helpers")
+const { setup, tokenSetup, generateOrder, generateSignature, computeOrderHash, constructMessage, snakeToCamel } = require("../../test/helpers")
 const s = require('./setup.json')
-const pool = require('./pg');
+const pool = require('./mysql');
 
 async function main() {
   const [owner, addr1] = await ethers.getSigners();
@@ -9,10 +9,12 @@ async function main() {
   const dyve = await Dyve.attach(s.dyve.address)
   await dyve.deployed()
 
-  const { rows: [data] } = await pool.query(
-    `select * from "Orderbook" where signer = $1 AND status = 'BORROWED' ORDER BY nonce DESC LIMIT 1`,
+  let data
+  [[data]] = await pool.query(
+    `SELECT * FROM orderbook WHERE signer = ? AND status = 'BORROWED' ORDER BY nonce DESC LIMIT 1`,
     [owner.address]
   )
+  data = snakeToCamel(data)
 
   await network.provider.send("evm_setNextBlockTimestamp", [
     Math.floor(new Date(data.expiryDateTime).getTime() / 1000) + 100,

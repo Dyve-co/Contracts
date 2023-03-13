@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
-const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("../../test/helpers")
+const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage, snakeToCamel } = require("../../test/helpers")
 const s = require('./setup.json')
-const pool = require('./pg');
+const pool = require('./mysql');
 
 async function main() {
   const [owner] = await ethers.getSigners();
@@ -9,10 +9,12 @@ async function main() {
   const dyve = await Dyve.attach(s.dyve.address)
   await dyve.deployed()
 
-  const { rows: orders } = await pool.query(
-    `select * from "Orderbook" where signer = $1`,
+  let orders
+  [orders] = await pool.query(
+    `select * from orderbook where signer = ?`,
     [owner.address]
   )
+  orders = orders.map(order => snakeToCamel(order))
 
   const nonces = orders.map(o => o.nonce)
   const tx = await dyve.cancelMultipleMakerOrders(nonces)

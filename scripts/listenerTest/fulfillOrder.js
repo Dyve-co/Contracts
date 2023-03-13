@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
-const { setup, tokenSetup, generateOrder, generateSignature, computeOrderHash, constructMessage } = require("../../test/helpers")
+const { setup, tokenSetup, generateOrder, generateSignature, computeOrderHash, constructMessage, snakeToCamel, toSqlDateTime } = require("../../test/helpers")
 const s = require('./setup.json')
-const pool = require('./pg');
+const pool = require('./mysql');
 
 async function main() {
   const [owner, addr1] = await ethers.getSigners();
@@ -14,10 +14,12 @@ async function main() {
   ]);
   await network.provider.send("evm_mine");
 
-  const { rows: [data] } = await pool.query(
-    `select * from "Orderbook" where signer = $1 ORDER BY nonce DESC LIMIT 1`,
+  [[data]] = await pool.query(
+    `select * from orderbook where signer = ? ORDER BY nonce DESC LIMIT 1`,
     [owner.address]
   )
+  data = snakeToCamel(data)
+  console.log("date endTime mysql: ", data.endTime)
   const order = generateOrder(data)
   const signature = await generateSignature(order, owner, dyve)
 
