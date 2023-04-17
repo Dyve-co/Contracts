@@ -3,6 +3,7 @@ require("@nomicfoundation/hardhat-toolbox");
 require("solidity-coverage");
 require("hardhat-gas-reporter");
 require("hardhat-dependency-compiler");
+require("@nomiclabs/hardhat-etherscan");
 
 // Gas estimation calculation
 // (gas units) * (gas price per unit) = gas fee in gwei
@@ -21,7 +22,12 @@ module.exports = {
     artifacts: './artifacts'
   },
   gasReporter: {
-    enabled: false,
+    enabled: true,
+    currency: 'USD',
+    coinmarketcap: process.env.COINMARKET_CAP_API_KEY,
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY
   },
   // dependencyCompiler: {
   //   paths: [
@@ -31,6 +37,12 @@ module.exports = {
   //   ],
   // },
   networks: {
+    mainnet: {
+      url: `https://eth-mainnet.g.alchemy.com/v2/${process.env.MAINNET_ALCHEMY_API_KEY}`,
+      accounts: process.env.PRIVATE_KEY_LISTER !== undefined
+        ? [process.env.PRIVATE_KEY_LISTER, process.env.PRIVATE_KEY_BIDDER]
+        : [],
+    },
     rinkeby: {
       url: `https://eth-rinkeby.alchemyapi.io/v2/${process.env.ALCHEMY_API_KEY}`,
       accounts: process.env.PRIVATE_KEY_LISTER !== undefined 
