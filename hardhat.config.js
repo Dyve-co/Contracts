@@ -16,13 +16,17 @@ module.exports = {
       { version: "0.8.9" }, 
       { version: "0.8.0" }, 
       { version: "0.4.18" }
-    ]
+    ],
+    optimizer: {
+      enabled: true,
+      runs: 100,
+    }
   },
   paths: {
     artifacts: './artifacts'
   },
   gasReporter: {
-    enabled: true,
+    enabled: false,
     currency: 'USD',
     coinmarketcap: process.env.COINMARKET_CAP_API_KEY,
   },

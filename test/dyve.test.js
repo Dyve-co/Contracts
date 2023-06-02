@@ -1,6 +1,6 @@
 const { expect, use } = require("chai")
 const { ethers } = require("hardhat")
-const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage } = require("./helpers")
+const { setup, tokenSetup, generateSignature, computeOrderHash, constructMessage, generateBulkSignature } = require("./helpers")
 use(require('chai-as-promised'))
 
 const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
@@ -29,6 +29,7 @@ let weth;
 let mockUSDC;
 let premiumCollection;
 let mockERC1155;
+let merkleVerifier;
 let dyve;
 let mockERC721;
 
@@ -47,7 +48,7 @@ beforeEach(async function () {
   reservoirOracleSigner = owner;
   protocolFeeRecipient = addr2;
 
-  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
+  [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, merkleVerifier, dyve] = await setup(protocolFeeRecipient, reservoirOracleSigner)
   await tokenSetup([owner, addr1, addr2], weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve)
 });
 
@@ -70,7 +71,48 @@ describe("Dyve", function () {
     })
   })
 
-  describe("Fulfill order functionality", function () {
+  describe.only("Fulfill order functionality", function () {
+    it.only("bulk listing test", async () => {
+      const baseData = {
+        orderType: ETH_TO_ERC721,
+        signer: owner.address,
+        collection: mockERC721.address,
+        tokenId: 0,
+        amount: 1,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: ethers.constants.AddressZero,
+        nonce: 100,
+        premiumCollection: ethers.constants.AddressZero,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+      }
+      const data = [...Array(10).keys()].map((i) => ({
+        ...baseData,
+        nonce: baseData.nonce + i,
+        tokenId: i,
+      }))
+
+      const orderHash = computeOrderHash(data[0])
+      const { signature, root, merklePath } = await generateBulkSignature(data, owner, dyve, orderHash)
+      const orderData = { ...data[0], signature }
+      console.log("tree hexproof: ", merklePath)
+
+      // const MerkleVerifier = await ethers.getContractFactory("MerkleVerifier")
+      // const merkleVerifier = await MerkleVerifier.deploy()
+      // await merkleVerifies.deployed()
+
+      // const computedRoot = await merkleVerifier._computeRoot(orderHash, merklePath)
+      // console.log("computed root: ", computedRoot)
+      
+      // const signatureValid = await dyve.validateBulkSignature(orderData, merklePath)
+      // console.log("signature valid: ", signatureValid);
+    })
+
+   
+
     it("consumes maker ask (listing ERC721) with taker bid using ETH", async () => {
       const data = {
         orderType: ETH_TO_ERC721,

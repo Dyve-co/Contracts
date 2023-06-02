@@ -2,10 +2,18 @@
 pragma solidity ^0.8.16;
 
 // import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
-import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
+import {IReservoirOracle} from "./IReservoirOracle.sol";
+import {OrderTypes, OrderType} from "../libraries/OrderTypes.sol";
 
 interface IDyve {
+    // The NFT's listing status
+    enum OrderStatus {
+        EMPTY,
+        BORROWED,
+        EXPIRED,
+        CLOSED
+    }
+
     error InvalidAddress();
     error InvalidMinNonce();
     error EmptyNonceArray();

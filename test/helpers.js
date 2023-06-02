@@ -1,6 +1,7 @@
 const { ethers } = require('hardhat')
 const { constants } = require('ethers')
-const { orderType, messageType } = require("./types")
+const { orderType, messageType, rootType } = require("./types")
+const { MerkleTree } = require('merkletreejs')
 const { solidityKeccak256, keccak256, defaultAbiCoder, parseEther, _TypedDataEncoder, arrayify } = ethers.utils;
 
 const orderTypeMapping = {
@@ -45,11 +46,19 @@ const setup = async (protocolFeeRecipient, reservoirOracleSigner) => {
   const reservoirOracle = await ReservoirOracle.deploy(reservoirOracleSigner.address);
   await reservoirOracle.deployed();
 
-  const Dyve = await ethers.getContractFactory("Dyve");
+  const MerkleVerifier = await ethers.getContractFactory("MerkleVerifier");
+  const merkleVerifier = await MerkleVerifier.deploy();
+  await merkleVerifier.deployed();
+
+  const Dyve = await ethers.getContractFactory("Dyve", {
+    libraries: {
+      MerkleVerifier: merkleVerifier.address,
+    }
+  });
   const dyve = await Dyve.deploy(whitelistedCurrencies.address, protocolFeeManager.address, reservoirOracle.address, protocolFeeRecipient.address);
   await dyve.deployed();
 
-  return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, dyve];
+  return [weth, mockUSDC, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, reservoirOracle, protocolFeeManager, merkleVerifier, dyve];
 } 
 
 const tokenSetup = async (users, weth, mockERC20, mockERC721, mockERC1155, premiumCollection, whitelistedCurrencies, protocolFeeManager, dyve) => {
@@ -69,7 +78,7 @@ const tokenSetup = async (users, weth, mockERC20, mockERC721, mockERC1155, premi
     await mockERC20.connect(user).approve(dyve.address, constants.MaxUint256);
 
     // Each user mints 1 ERC721 NFT
-    await mockERC721.connect(user).mint();
+    await mockERC721.connect(user).batchMint(10);
 
     // Set approval for all tokens in lender collection
     await mockERC721.connect(user).setApprovalForAll(dyve.address, true);
@@ -125,6 +134,25 @@ const generateOracleSignature = async (data, signer) => {
   const signature = await signer._signTypedData(domain, messageType, data)
 
   return signature
+}
+
+const generateBulkSignature = async (data, signer, contract, orderHash) => {
+  const leaves = data.map(order => computeOrderHash(order))
+  const { root, tree } = getMerkleProof(leaves)
+  const domain = {
+    name: "Dyve",
+    version: "1",
+    chainId: "31337",
+    verifyingContract: contract.address
+  }
+  const rootData = { root }
+  const signature = await signer._signTypedData(domain, rootType, rootData)
+  const merklePath = ethers.utils.defaultAbiCoder.encode( 
+      ['bytes32[]'],
+      [tree.getHexProof(orderHash)],
+    )
+
+  return { signature, root, merklePath }
 }
 
 const computeOrderHash = (order) => {
@@ -231,12 +259,19 @@ const toSqlDateTime = (date) => {
     .replace('T', ' ')
 }
 
+const getMerkleProof = (leaves) => {
+  const tree = new MerkleTree(leaves, ethers.utils.keccak256, { sort: true });
+  const root = tree.getHexRoot();
+  return { root, tree };
+}
+
 module.exports = {
   setup,
   tokenSetup,
   generateSignature,
   generateOrder,
   generateOracleSignature,
+  generateBulkSignature,
   computeOrderHash,
   constructMessage,
   snakeToCamel,

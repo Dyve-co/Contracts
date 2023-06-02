@@ -23,4 +23,10 @@ const messageType = {
   ]
 }
 
-module.exports = { orderType, messageType }
+const rootType = {
+  Root: [
+    { name: 'root', type: 'bytes32' },
+  ]
+}
+
+module.exports = { orderType, messageType, rootType }

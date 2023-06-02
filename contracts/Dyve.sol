@@ -16,6 +16,9 @@ import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
+import {MerkleVerifier} from "./libraries/MerkleVerifier.sol";
+
+import "hardhat/console.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
@@ -159,6 +162,22 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
         emit WhitelistedCurrenciesUpdated(whitelistedCurrenciesAddress);
         emit ProtocolFeeManagerUpdated(protocolFeeManagerAddress);
         emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
+    }
+
+    function validateBulkSignature(OrderTypes.Order calldata order, bytes calldata merklePathHash)
+        external
+        view
+        returns (bool)
+    {
+        bytes32 orderHash = order.hash();
+        (bytes32[] memory merklePath) = abi.decode(merklePathHash, (bytes32[]));
+        bytes32 root = MerkleVerifier._computeRoot(orderHash, merklePath);
+
+        return true;
+        // console.log("root in dyve contract");
+        // console.logBytes32(root[0]);
+
+        // return SignatureChecker.isValidSignatureNow(order.signer, root, order.signature);
     }
 
     /**
