@@ -4,10 +4,8 @@ pragma solidity ^0.8.16;
 enum OrderType {
     ETH_TO_ERC721,
     ETH_TO_ERC1155,
-
     ERC20_TO_ERC721,
     ERC20_TO_ERC1155,
-
     ERC721_TO_ERC20,
     ERC1155_TO_ERC20
 }
@@ -38,22 +36,21 @@ library OrderTypes {
     }
 
     function hash(Order memory order) internal pure returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(
-                    ORDER_HASH,
-                    order.orderType,
-                    order.signer,
-                    order.collection,
-                    order.tokenId,
-                    order.amount,
-                    order.duration,
-                    order.collateral,
-                    order.fee,
-                    order.currency,
-                    order.nonce,
-                    order.endTime
-                )
-            );
+        return keccak256(
+            abi.encode(
+                ORDER_HASH,
+                order.orderType,
+                order.signer,
+                order.collection,
+                order.tokenId,
+                order.amount,
+                order.duration,
+                order.collateral,
+                order.fee,
+                order.currency,
+                order.nonce,
+                order.endTime
+            )
+        );
     }
 }
