@@ -1,11 +1,33 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity ^0.8.20;
 
-// import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
-import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
+import {OrderTypes, OrderType} from "../libraries/OrderTypes.sol";
+import {IReservoirOracle} from "./IReservoirOracle.sol";
 
 interface IDyve {
+    // The NFT's listing status
+    enum OrderStatus {
+        EMPTY,
+        BORROWED,
+        EXPIRED,
+        CLOSED
+    }
+
+    // TODO: DELETE THIS LATER
+    struct Order {
+        bytes32 orderHash;
+        OrderType orderType;
+        address payable lender;
+        address payable borrower;
+        address collection;
+        uint256 tokenId;
+        uint256 amount; // only applicable for ERC1155, set to 1 for ERC721
+        uint256 expiryDateTime;
+        uint256 collateral;
+        address currency;
+        OrderStatus status;
+    }
+
     error InvalidAddress();
     error InvalidMinNonce();
     error EmptyNonceArray();
@@ -36,57 +58,32 @@ interface IDyve {
     event ReserovirOracleAddressUpadted(address indexed _reservoirOracleAddress);
 
     event OrderFulfilled( // ask hash of the maker order
-        bytes32 orderHash,
+        bytes32 indexed orderHash,
+        address indexed lender,
+        address indexed borrower,
         OrderType orderType,
-        uint256 orderNonce,
-        address indexed taker,
-        address indexed maker,
         address collection,
         uint256 tokenId,
         uint256 amount,
         uint256 collateral,
         uint256 fee,
         address currency,
-        uint256 duration,
-        uint256 expiryDateTime,
-        OrderStatus status
+        uint256 expiryDateTime
     );
-
-    event Close(
-        bytes32 orderHash,
-        OrderType orderType,
-        address indexed borrower,
-        address indexed lender,
-        address collection,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 returnedTokenId,
-        uint256 collateral,
-        address currency,
-        OrderStatus status
-    );
-
-    event Claim(
-        bytes32 orderHash,
-        OrderType orderType,
-        address indexed borrower,
-        address indexed lender,
-        address collection,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 collateral,
-        address currency,
-        OrderStatus status
-    );
+    event Close(bytes32 indexed orderHash, uint256 returnTokenId);
+    event Claim(bytes32 indexed orderHash);
 
     function cancelAllOrdersForSender(uint256 minNonce) external;
     function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external;
-    function fulfillOrder(OrderTypes.Order calldata order, IReservoirOracle.Message calldata message)
+    function fulfillOrder(OrderTypes.MakerOrder calldata makerOrder, IReservoirOracle.Message calldata message)
         external
         payable;
-    function closePosition(bytes32 orderHash, uint256 returnTokenId, IReservoirOracle.Message calldata message)
-        external;
-    function claimCollateral(bytes32 orderHash) external;
+    function closePosition(
+        OrderTypes.Order calldata order,
+        uint256 returnTokenId,
+        IReservoirOracle.Message calldata message
+    ) external;
+    function claimCollateral(OrderTypes.Order calldata order) external;
     function updateProtocolFeeManager(address _protocolFeeManager) external;
     function updateWhitelistedCurrencies(address _whitelistedCurrencies) external;
     function updateReservoirOracle(address _reservoirOracle) external;

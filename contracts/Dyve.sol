@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity ^0.8.20;
 
 // OZ libraries
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -12,6 +12,7 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Dyve contacts/interfaces/libraries
+import {IDyve} from "./interfaces/IDyve.sol";
 import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
@@ -20,9 +21,8 @@ import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
-contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
+contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
     using SafeERC20 for IERC20;
-    using OrderTypes for OrderTypes.Order;
 
     IWhitelistedCurrencies public whitelistedCurrencies;
     IProtocolFeeManager public protocolFeeManager;
@@ -36,102 +36,7 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
 
     mapping(address => uint256) public userMinOrderNonce;
     mapping(address => mapping(uint256 => bool)) private _isUserOrderNonceExecutedOrCancelled;
-    mapping(bytes32 => Order) public orders;
-
-    // The NFT's listing status
-    enum OrderStatus {
-        EMPTY,
-        BORROWED,
-        EXPIRED,
-        CLOSED
-    }
-
-    struct Order {
-        bytes32 orderHash;
-        OrderType orderType;
-        address payable lender;
-        address payable borrower;
-        address collection;
-        uint256 tokenId;
-        uint256 amount; // only applicable for ERC1155, set to 1 for ERC721
-        uint256 expiryDateTime;
-        uint256 collateral;
-        address currency;
-        OrderStatus status;
-    }
-
-    error InvalidAddress();
-    error InvalidMinNonce();
-    error EmptyNonceArray();
-    error InvalidNonce(uint256 nonce);
-    error InvalidMsgValue();
-    error InvalidSigner();
-    error ExpiredListing();
-    error ExpiredNonce();
-    error InvalidFee();
-    error InvalidCollateral();
-    error InvalidDuration();
-    error InvalidAmount();
-    error InvalidCurrency();
-    error InvalidSignature();
-    error TokenFlagged();
-    error InvalidSender(address sender);
-    error InvalidOrderExpiration();
-    error InvalidOrderStatus();
-    error NotTokenOwner(address collection, uint256 tokenId);
-    error InvalidMessage();
-
-    event CancelAllOrders(address indexed user, uint256 newMinNonce);
-    event CancelMultipleOrders(address indexed user, uint256[] orderNonces);
-    event ProtocolFeeManagerUpdated(address indexed protocolFeeManagerAddress);
-    event WhitelistedCurrenciesUpdated(address indexed whitelistedCurrenciesAddress);
-    event ReservoirOracleUpdated(address indexed reservoirOracle);
-    event ProtocolFeeRecipientUpdated(address indexed _protocolFeeRecipient);
-    event ReserovirOracleAddressUpadted(address indexed _reservoirOracleAddress);
-
-    event OrderFulfilled( // ask hash of the maker order
-        bytes32 orderHash,
-        OrderType orderType,
-        uint256 orderNonce,
-        address indexed taker,
-        address indexed maker,
-        address collection,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 collateral,
-        uint256 fee,
-        address currency,
-        uint256 duration,
-        uint256 expiryDateTime,
-        OrderStatus status
-    );
-
-    event Close(
-        bytes32 orderHash,
-        OrderType orderType,
-        address indexed borrower,
-        address indexed lender,
-        address collection,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 returnedTokenId,
-        uint256 collateral,
-        address currency,
-        OrderStatus status
-    );
-
-    event Claim(
-        bytes32 orderHash,
-        OrderType orderType,
-        address indexed borrower,
-        address indexed lender,
-        address collection,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 collateral,
-        address currency,
-        OrderStatus status
-    );
+    mapping(bytes32 => OrderStatus) public orders;
 
     /**
      * @notice Constructor
@@ -155,10 +60,6 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
         protocolFeeManager = IProtocolFeeManager(protocolFeeManagerAddress);
         reservoirOracle = IReservoirOracle(reservoirOracleAddress);
         protocolFeeRecipient = _protocolFeeRecipient;
-
-        emit WhitelistedCurrenciesUpdated(whitelistedCurrenciesAddress);
-        emit ProtocolFeeManagerUpdated(protocolFeeManagerAddress);
-        emit ProtocolFeeRecipientUpdated(_protocolFeeRecipient);
     }
 
     /**
@@ -192,50 +93,35 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
      * @param order the order to be fulfilled
      * @param message the message from the oracle
      */
-    function fulfillOrder(OrderTypes.Order calldata order, IReservoirOracle.Message calldata message)
+    function fulfillOrder(OrderTypes.MakerOrder calldata order, IReservoirOracle.Message calldata message)
         external
         payable
         nonReentrant
     {
-        if (
-            (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155)
-                && msg.value != (order.fee + order.collateral)
-        ) {
-            revert InvalidMsgValue();
-        }
-        if (
-            (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155)
-                && msg.value != 0
-        ) revert InvalidMsgValue();
-
-        _validateTokenFlaggingMessage(message, order.collection, order.tokenId);
-
         // Check the maker ask order
-        bytes32 orderHash = order.hash();
-        _validateOrder(order, _hashTypedDataV4(orderHash));
+        _validateOrder(order, OrderTypes.hashMakerOrder(order));
+        _validateTokenFlaggingMessage(message, order.collection, order.tokenId);
 
         // Update maker ask order status to true (prevents replay)
         _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
 
+        address lender = uint256(order.orderType) < 4 ? order.signer : msg.sender;
+        address borrower = uint256(order.orderType) >= 4 ? msg.sender : order.signer;
+
+        bytes32 orderHash = _createOrder(order, lender, borrower);
         // Goes through the follwing procedure:
         // 1. Creates an order
         // 2. transfers the NFT to the borrower
         // 3. transfers the funds from the borrower to the respecitve recipients
         if (order.orderType == OrderType.ETH_TO_ERC721) {
-            _createOrder(order, orderHash, order.signer, msg.sender);
-
             IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
 
             _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
         } else if (order.orderType == OrderType.ETH_TO_ERC1155) {
-            _createOrder(order, orderHash, order.signer, msg.sender);
-
             IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId, order.amount, "");
 
             _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
         } else if (order.orderType == OrderType.ERC20_TO_ERC721) {
-            _createOrder(order, orderHash, order.signer, msg.sender);
-
             IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
 
             _transferERC20(
@@ -248,8 +134,6 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         } else if (order.orderType == OrderType.ERC20_TO_ERC1155) {
-            _createOrder(order, orderHash, order.signer, msg.sender);
-
             IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId, order.amount, "");
 
             _transferERC20(
@@ -262,8 +146,6 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         } else if (order.orderType == OrderType.ERC721_TO_ERC20) {
-            _createOrder(order, orderHash, msg.sender, order.signer);
-
             IERC721(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId);
 
             _transferERC20(
@@ -276,8 +158,6 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         } else if (order.orderType == OrderType.ERC1155_TO_ERC20) {
-            _createOrder(order, orderHash, msg.sender, order.signer);
-
             IERC1155(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId, order.amount, "");
 
             _transferERC20(
@@ -293,57 +173,56 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
 
         emit OrderFulfilled(
             orderHash,
+            lender,
+            borrower,
             order.orderType,
-            order.nonce,
-            msg.sender,
-            order.signer,
+            // order.nonce,
             order.collection,
             order.tokenId,
             order.amount,
             order.collateral,
             order.fee,
             order.currency,
-            order.duration,
-            orders[orderHash].expiryDateTime,
-            OrderStatus.BORROWED
+            block.timestamp + order.duration
         );
     }
 
     /**
      * @notice Return back an NFT to the lender and release collateral to the borrower
      * @dev we check that the borrower owns the incoming ID from the collection.
-     * @param orderHash order hash of the maker order
+     * @param order the order data
      * @param returnTokenId the NFT to be returned
      * @param message the message from the oracle
      */
-    function closePosition(bytes32 orderHash, uint256 returnTokenId, IReservoirOracle.Message calldata message)
-        external
-        nonReentrant
-    {
-        Order memory order = orders[orderHash];
+    function closePosition(
+        OrderTypes.Order calldata order,
+        uint256 returnTokenId,
+        IReservoirOracle.Message calldata message
+    ) external nonReentrant {
+        bytes32 orderHash = OrderTypes.hashOrder(order);
+        if (orders[orderHash] != OrderStatus.BORROWED) revert InvalidOrderStatus();
         if (order.borrower != msg.sender) revert InvalidSender(msg.sender);
         if (order.expiryDateTime <= block.timestamp) revert InvalidOrderExpiration();
-        if (order.status != OrderStatus.BORROWED) revert InvalidOrderStatus();
 
-        if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)) {
-            if (IERC721(order.collection).ownerOf(returnTokenId) != msg.sender) {
+        if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC1155)) {
+            if (IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) < order.amount) {
                 revert NotTokenOwner(order.collection, returnTokenId);
             }
         } else {
-            if (IERC1155(order.collection).balanceOf(msg.sender, returnTokenId) < order.amount) {
+            if (IERC721(order.collection).ownerOf(returnTokenId) != msg.sender) {
                 revert NotTokenOwner(order.collection, returnTokenId);
             }
         }
 
         _validateTokenFlaggingMessage(message, order.collection, returnTokenId);
 
-        orders[orderHash].status = OrderStatus.CLOSED;
+        orders[orderHash] = OrderStatus.CLOSED;
 
         // 1. Transfer the NFT back to the lender
-        if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC721)) {
-            IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
-        } else {
+        if (IERC165(order.collection).supportsInterface(INTERFACE_ID_ERC1155)) {
             IERC1155(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId, order.amount, "");
+        } else {
+            IERC721(order.collection).safeTransferFrom(order.borrower, order.lender, returnTokenId);
         }
 
         // 2. Transfer the collateral from dyve to the borrower
@@ -354,33 +233,20 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
             IERC20(order.currency).safeTransfer(order.borrower, order.collateral);
         }
 
-        emit Close(
-            order.orderHash,
-            order.orderType,
-            order.borrower,
-            order.lender,
-            order.collection,
-            order.tokenId,
-            order.amount,
-            returnTokenId,
-            order.collateral,
-            order.currency,
-            OrderStatus.CLOSED
-        );
+        emit Close(orderHash, returnTokenId);
     }
 
     /**
      * @notice Releases collateral to the lender for the expired borrow
-     * @param orderHash order hash of the maker order
+     * @param order the order data
      */
-    function claimCollateral(bytes32 orderHash) external nonReentrant {
-        Order memory order = orders[orderHash];
-
+    function claimCollateral(OrderTypes.Order calldata order) external nonReentrant {
+        bytes32 orderHash = OrderTypes.hashOrder(order);
+        if (orders[orderHash] != OrderStatus.BORROWED) revert InvalidOrderStatus();
         if (order.lender != msg.sender) revert InvalidSender(msg.sender);
         if (order.expiryDateTime > block.timestamp) revert InvalidOrderExpiration();
-        if (order.status != OrderStatus.BORROWED) revert InvalidOrderStatus();
 
-        orders[orderHash].status = OrderStatus.EXPIRED;
+        orders[orderHash] = OrderStatus.EXPIRED;
 
         // Transfer the collateral from dyve to the borrower
         if (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155) {
@@ -390,43 +256,35 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
             IERC20(order.currency).safeTransfer(order.lender, order.collateral);
         }
 
-        emit Claim(
-            order.orderHash,
-            order.orderType,
-            order.borrower,
-            order.lender,
-            order.collection,
-            order.tokenId,
-            order.amount,
-            order.collateral,
-            order.currency,
-            OrderStatus.EXPIRED
-        );
+        emit Claim(orderHash);
     }
 
     /**
      * @notice Creates an Order
-     * @param order the order information
+     * @dev only stores the hash of the order
+     * @param makerOrder the order information
      * @param lender the lender of the order
      * @param borrower the borrower of the order
      */
-    function _createOrder(OrderTypes.Order calldata order, bytes32 orderHash, address lender, address borrower)
+    function _createOrder(OrderTypes.MakerOrder calldata makerOrder, address lender, address borrower)
         internal
+        returns (bytes32 orderHash)
     {
-        // create order for future processing (ie: closing and claiming)
-        orders[orderHash] = Order({
-            orderHash: orderHash,
-            orderType: order.orderType,
-            lender: payable(lender),
-            borrower: payable(borrower),
-            collection: order.collection,
-            tokenId: order.tokenId,
-            amount: order.amount,
-            expiryDateTime: block.timestamp + order.duration,
-            collateral: order.collateral,
-            currency: order.currency,
-            status: OrderStatus.BORROWED
-        });
+        // reimplementation of hasOrder since hashOrder requires the parameter to be calldata
+        orderHash = keccak256(
+            abi.encode(
+                makerOrder.orderType,
+                lender,
+                borrower,
+                makerOrder.collection,
+                makerOrder.tokenId,
+                block.timestamp + makerOrder.duration,
+                makerOrder.amount,
+                makerOrder.collateral,
+                makerOrder.currency
+            )
+        );
+        orders[orderHash] = OrderStatus.BORROWED;
     }
 
     /**
@@ -546,7 +404,19 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
      * @param order the order to be verified
      * @param orderHash computed hash for the order
      */
-    function _validateOrder(OrderTypes.Order calldata order, bytes32 orderHash) internal view {
+    function _validateOrder(OrderTypes.MakerOrder calldata order, bytes32 orderHash) internal view {
+        // Verify msg value
+        if (
+            (order.orderType == OrderType.ETH_TO_ERC721 || order.orderType == OrderType.ETH_TO_ERC1155)
+                && msg.value != (order.fee + order.collateral)
+        ) {
+            revert InvalidMsgValue();
+        }
+        if (
+            (order.orderType != OrderType.ETH_TO_ERC721 && order.orderType != OrderType.ETH_TO_ERC1155)
+                && msg.value != 0
+        ) revert InvalidMsgValue();
+
         // Verify the signer is not address(0)
         if (order.signer == address(0)) revert InvalidSigner();
 
@@ -589,7 +459,7 @@ contract Dyve is ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
         ) revert InvalidCurrency();
 
         // Verify the validity of the signature
-        if (!(SignatureChecker.isValidSignatureNow(order.signer, orderHash, order.signature))) {
+        if (!(SignatureChecker.isValidSignatureNow(order.signer, _hashTypedDataV4(orderHash), order.signature))) {
             revert InvalidSignature();
         }
     }

@@ -18,7 +18,7 @@ library OrderTypes {
     // keccak256("Order(uint256 orderType,address signer,address collection,uint256 tokenId,uint256 amount,uint256 duration,uint256 collateral,uint256 fee,address currency,uint256 nonce,uint256 endTime)")
     bytes32 internal constant ORDER_HASH = 0xaad599fc66ff6b968ccb16010214cc3102e0a7e009000f61cab3f208682c3088;
 
-    struct Order {
+    struct MakerOrder {
         OrderType orderType; // the type of order
         address signer; // signer of the maker order
         address collection; // collection address
@@ -35,7 +35,19 @@ library OrderTypes {
         bytes signature; // signature of the maker order
     }
 
-    function hash(Order memory order) internal pure returns (bytes32) {
+    struct Order {
+        OrderType orderType; // the type of order
+        address lender; // address of the lender
+        address borrower; // address of the borrower
+        address collection; // collection address
+        uint256 tokenId; // id of the token
+        uint256 expiryDateTime; // expiry date of the order
+        uint256 amount; // amount of the token (only applicable for ERC1155, always set to 1 for ERC721)
+        uint256 collateral; // collateral amount
+        address currency; // currency (e.g., WETH)
+    }
+
+    function hashMakerOrder(MakerOrder calldata order) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
                 ORDER_HASH,
@@ -50,6 +62,22 @@ library OrderTypes {
                 order.currency,
                 order.nonce,
                 order.endTime
+            )
+        );
+    }
+
+    function hashOrder(Order calldata order) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                order.orderType,
+                order.lender,
+                order.borrower,
+                order.collection,
+                order.tokenId,
+                order.expiryDateTime,
+                order.amount,
+                order.collateral,
+                order.currency
             )
         );
     }
