@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 import {OrderTypes, OrderType} from "../libraries/OrderTypes.sol";
 import {IReservoirOracle} from "./IReservoirOracle.sol";
@@ -11,21 +11,6 @@ interface IDyve {
         BORROWED,
         EXPIRED,
         CLOSED
-    }
-
-    // TODO: DELETE THIS LATER
-    struct Order {
-        bytes32 orderHash;
-        OrderType orderType;
-        address payable lender;
-        address payable borrower;
-        address collection;
-        uint256 tokenId;
-        uint256 amount; // only applicable for ERC1155, set to 1 for ERC721
-        uint256 expiryDateTime;
-        uint256 collateral;
-        address currency;
-        OrderStatus status;
     }
 
     error InvalidAddress();

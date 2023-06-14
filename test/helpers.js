@@ -127,7 +127,7 @@ const generateOracleSignature = async (data, signer) => {
   return signature
 }
 
-const computeOrderHash = (order) => {
+const computeMakerOrderHash = (order) => {
   const types = [
     "bytes32",
     "uint256",
@@ -161,6 +161,36 @@ const computeOrderHash = (order) => {
   return keccak256(defaultAbiCoder.encode(types, values));
 }
 
+const computeOrderHash = (order, lender, borrower, expiryDateTime) => {
+  const types = [
+    "uint256",
+    "address",
+    "address",
+    "address",
+    "uint256",
+    "uint256",
+    "uint256",
+    "uint256",
+    "address",
+  ]
+
+  const values = [
+    order.orderType,
+    lender,
+    borrower,
+    order.collection,
+    order.tokenId,
+    expiryDateTime,
+    order.amount,
+    order.collateral,
+    order.currency,
+  ]
+
+  return keccak256(defaultAbiCoder.encode(types, values));
+}
+
+
+
 const constructMessage = async ({ contract, tokenId, isFlagged, timestamp, signer }) => {
   const tokenType = {
     Token: [
@@ -190,22 +220,18 @@ const constructMessage = async ({ contract, tokenId, isFlagged, timestamp, signe
   return message
 }
 
-const generateOrder = (input) => {
+const generateOrder = (input, lender, borrower, expiryDateTime) => {
   const order = {
-    orderType: orderTypeMapping[input.orderType],
-    signer: input.signer,
+    orderType: input.orderType,
+    lender,
+    borrower,
+    expiryDateTime,
     collection: input.collection,
     tokenId: input.tokenId,
     amount: input.amount,
-    duration: input.duration,
     collateral: input.collateral,
     fee: input.fee,
     currency: input.currency,
-    premiumCollection: input.premiumCollection,
-    premiumTokenId: input.premiumTokenId,
-    nonce: input.nonce,
-    endTime: Math.floor(input.endTime.getTime() / 1000),
-    signature: input.signature,
   }
 
   return order
@@ -237,6 +263,7 @@ module.exports = {
   generateSignature,
   generateOrder,
   generateOracleSignature,
+  computeMakerOrderHash,
   computeOrderHash,
   constructMessage,
   snakeToCamel,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.16;
 
 // OZ libraries
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -17,6 +17,8 @@ import {IWhitelistedCurrencies} from "./interfaces/IWhitelistedCurrencies.sol";
 import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
+
+import "hardhat/console.sol";
 
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
@@ -106,7 +108,7 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
         _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
 
         address lender = uint256(order.orderType) < 4 ? order.signer : msg.sender;
-        address borrower = uint256(order.orderType) >= 4 ? msg.sender : order.signer;
+        address borrower = uint256(order.orderType) >= 4 ? order.signer : msg.sender;
 
         bytes32 orderHash = _createOrder(order, lender, borrower);
         // Goes through the follwing procedure:
@@ -298,7 +300,6 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
         uint256 protocolFee =
             (fee * protocolFeeManager.determineProtocolFeeRate(premiumCollection, premiumTokenId, to)) / bps;
         bool success;
-
         // 1. Protocol fee transfer
         if (protocolFee != 0) {
             (success,) = payable(protocolFeeRecipient).call{value: protocolFee}("");
