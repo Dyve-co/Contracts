@@ -92,6 +92,7 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
      * @notice Fulfills the order
      * @param order the order to be fulfilled
      * @param message the message from the oracle
+     * @param additionalParameters additional parameters for the case of collection offers
      */
     function fulfillOrder(
         OrderTypes.MakerOrder calldata order,
@@ -147,7 +148,9 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumCollection,
                 order.premiumTokenId
             );
-        } else if (order.orderType == OrderType.ERC721_TO_ERC20) {
+        } else if (
+            order.orderType == OrderType.ERC721_TO_ERC20 || order.orderType == OrderType.ERC721_TO_ERC20_COLLECTION
+        ) {
             IERC721(order.collection).safeTransferFrom(msg.sender, order.signer, tokenId);
 
             _transferERC20(
@@ -159,7 +162,9 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumCollection,
                 order.premiumTokenId
             );
-        } else if (order.orderType == OrderType.ERC1155_TO_ERC20) {
+        } else if (
+            order.orderType == OrderType.ERC1155_TO_ERC20 || order.orderType == OrderType.ERC1155_TO_ERC20_COLLECTION
+        ) {
             IERC1155(order.collection).safeTransferFrom(msg.sender, order.signer, tokenId, order.amount, "");
 
             _transferERC20(
