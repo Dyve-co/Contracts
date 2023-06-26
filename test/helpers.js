@@ -237,6 +237,8 @@ const generateOrder = (input, lender, borrower, expiryDateTime) => {
   return order
 }
 
+const encodeTokenId = (tokenId) => defaultAbiCoder.encode(['uint256'], [tokenId])
+
 const snakeToCamel = input => Object.keys(input ?? {}).reduce((acc, key) => ({
   ...acc,
   [key.toLowerCase().replace(/([-_][a-z])/g, group =>
@@ -268,4 +270,5 @@ module.exports = {
   constructMessage,
   snakeToCamel,
   toSqlDateTime,
+  encodeTokenId,
 }

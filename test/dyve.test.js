@@ -1,6 +1,6 @@
 const { expect, use } = require("chai")
 const { ethers } = require("hardhat")
-const { setup, tokenSetup, generateSignature, computeMakerOrderHash, computeOrderHash, constructMessage, generateOrder } = require("./helpers")
+const { setup, tokenSetup, generateSignature, computeMakerOrderHash, computeOrderHash, constructMessage, generateOrder, encodeTokenId } = require("./helpers")
 use(require('chai-as-promised'))
 
 const { solidityKeccak256, keccak256, defaultAbiCoder } = ethers.utils;
@@ -11,6 +11,8 @@ const ERC20_TO_ERC721 = 2
 const ERC20_TO_ERC1155 = 3
 const ERC721_TO_ERC20 = 4
 const ERC1155_TO_ERC20 = 5
+const ERC721_TO_ERC20_COLLECTION = 6
+const ERC1155_TO_ERC20_COLLECTION = 7
 
 const EMPTY = 0
 const BORROWED = 1
@@ -443,7 +445,6 @@ describe("Dyve", function () {
       const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
 
       const orderHash = computeOrderHash(data, owner.address, addr1.address, timestamp + data.duration)
-      const orderStatus = await dyve.orders(orderHash)
 
       await expect(borrowTx)
       .to.emit(dyve, "OrderCreated")
@@ -462,6 +463,135 @@ describe("Dyve", function () {
       )
 
       await expect(dyve.fulfillOrder(makerOrder, message, []))
+        .to.be.rejectedWith("ExpiredNonce")
+    })
+
+    it("consumes maker collection bid (offer ERC721) with taker ask using USDC", async () => {
+      const data = {
+        orderType: ERC721_TO_ERC20_COLLECTION,
+        signer: addr1.address,
+        collection: mockERC721.address,
+        tokenId: 0,
+        amount: 1,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: mockUSDC.address,
+        nonce: 100,
+        premiumCollection: ethers.constants.AddressZero,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+      }
+
+      const signature = await generateSignature(data, addr1, dyve)
+      const makerOrder = { ...data, signature }
+
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC721.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
+      await addCurrencyTx.wait()
+
+      const borrowTx = await dyve.fulfillOrder(makerOrder, message, encodeTokenId(data.tokenId))
+      await borrowTx.wait()
+
+      const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
+
+      const orderHash = computeOrderHash(data, owner.address, addr1.address, timestamp + data.duration)
+      const orderStatus = await dyve.orders(orderHash)
+
+      expect(orderStatus).to.equal(BORROWED);
+      await expect(mockERC721.ownerOf(1)).to.eventually.equal(addr1.address);
+      await expect(mockUSDC.balanceOf(dyve.address)).to.eventually.equal(ethers.utils.parseEther("1"));
+      await expect(mockUSDC.balanceOf(owner.address)).to.eventually.equal(ethers.utils.parseEther(String(30 + 0.1)));
+      await expect(mockUSDC.balanceOf(addr1.address)).to.eventually.equal(ethers.utils.parseEther(String(30 - 1.1)));
+      await expect(mockUSDC.balanceOf(protocolFeeRecipient.address)).to.eventually.equal(ethers.utils.parseEther("30"));
+
+      await expect(borrowTx)
+      .to.emit(dyve, "OrderCreated")
+      .withArgs(
+        orderHash,
+        owner.address,
+        addr1.address,
+        data.orderType,
+        data.collection,
+        data.tokenId,
+        data.amount,
+        data.collateral,
+        data.fee,
+        data.currency,
+        timestamp + data.duration,
+      )
+
+      await expect(dyve.fulfillOrder(makerOrder, message, encodeTokenId(data.tokenId)))
+        .to.be.rejectedWith("ExpiredNonce")
+    })
+
+    it("consumes maker collection bid (offer ERC1155) with taker ask using USDC", async () => {
+      const data = {
+        orderType: ERC1155_TO_ERC20_COLLECTION,
+        signer: addr1.address,
+        collection: mockERC1155.address,
+        tokenId: 0,
+        amount: 10,
+        duration: 10800,
+        collateral: ethers.utils.parseEther("1").toString(),
+        fee: ethers.utils.parseEther("0.1").toString(),
+        currency: mockUSDC.address,
+        nonce: 100,
+        premiumCollection: ethers.constants.AddressZero,
+        premiumTokenId: 0,
+        startTime: Math.floor(Date.now() / 1000),
+        endTime: Math.floor(Date.now() / 1000) + 86400,
+      }
+
+      const signature = await generateSignature(data, addr1, dyve)
+      const makerOrder = { ...data, signature }
+
+      const { timestamp: fulfillOrderTimestamp } = await ethers.provider.getBlock('latest');
+      const message = await constructMessage({ 
+        contract: mockERC1155.address,
+        tokenId: 0,
+        isFlagged: false,
+        timestamp: fulfillOrderTimestamp - 10,
+        signer: reservoirOracleSigner,
+      })
+
+      const addCurrencyTx = await whitelistedCurrencies.addWhitelistedCurrency(mockUSDC.address)
+      await addCurrencyTx.wait()
+
+      const borrowTx = await dyve.fulfillOrder(makerOrder, message, encodeTokenId(data.tokenId))
+      await borrowTx.wait()
+
+      const { timestamp } = await ethers.provider.getBlock(borrowTx.blockNumber)
+
+      const orderHash = computeOrderHash(data, owner.address, addr1.address, timestamp + data.duration)
+      const orderStatus = await dyve.orders(orderHash)
+
+      await expect(borrowTx)
+      .to.emit(dyve, "OrderCreated")
+      .withArgs(
+        orderHash,
+        owner.address,
+        addr1.address,
+        data.orderType,
+        data.collection,
+        data.tokenId,
+        data.amount,
+        data.collateral,
+        data.fee,
+        data.currency,
+        timestamp + data.duration,
+      )
+
+      await expect(dyve.fulfillOrder(makerOrder, message, encodeTokenId(data.tokenId)))
         .to.be.rejectedWith("ExpiredNonce")
     })
 
