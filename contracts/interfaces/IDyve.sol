@@ -42,7 +42,7 @@ interface IDyve {
     event ProtocolFeeRecipientUpdated(address indexed _protocolFeeRecipient);
     event ReserovirOracleAddressUpadted(address indexed _reservoirOracleAddress);
 
-    event OrderFulfilled( // ask hash of the maker order
+    event OrderCreated( // ask hash of the maker order
         bytes32 indexed orderHash,
         address indexed lender,
         address indexed borrower,
@@ -60,9 +60,11 @@ interface IDyve {
 
     function cancelAllOrdersForSender(uint256 minNonce) external;
     function cancelMultipleMakerOrders(uint256[] calldata orderNonces) external;
-    function fulfillOrder(OrderTypes.MakerOrder calldata makerOrder, IReservoirOracle.Message calldata message)
-        external
-        payable;
+    function fulfillOrder(
+        OrderTypes.MakerOrder calldata makerOrder,
+        IReservoirOracle.Message calldata message,
+        bytes calldata additionalParameters
+    ) external payable;
     function closePosition(
         OrderTypes.Order calldata order,
         uint256 returnTokenId,

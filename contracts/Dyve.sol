@@ -18,8 +18,6 @@ import {IProtocolFeeManager} from "./interfaces/IProtocolFeeManager.sol";
 import {IReservoirOracle} from "./interfaces/IReservoirOracle.sol";
 import {OrderTypes, OrderType} from "./libraries/OrderTypes.sol";
 
-import "hardhat/console.sol";
-
 /**
  * @notice The Dyve Contract to handle lending and borrowing of NFTs
  */
@@ -95,14 +93,16 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
      * @param order the order to be fulfilled
      * @param message the message from the oracle
      */
-    function fulfillOrder(OrderTypes.MakerOrder calldata order, IReservoirOracle.Message calldata message)
-        external
-        payable
-        nonReentrant
-    {
+    function fulfillOrder(
+        OrderTypes.MakerOrder calldata order,
+        IReservoirOracle.Message calldata message,
+        bytes calldata additionalParameters
+    ) external payable nonReentrant {
+        uint256 tokenId = _getTokenId(additionalParameters, order);
+
         // Check the maker ask order
         _validateOrder(order, OrderTypes.hashMakerOrder(order));
-        _validateTokenFlaggingMessage(message, order.collection, order.tokenId);
+        _validateTokenFlaggingMessage(message, order.collection, tokenId);
 
         // Update maker ask order status to true (prevents replay)
         _isUserOrderNonceExecutedOrCancelled[order.signer][order.nonce] = true;
@@ -110,21 +110,21 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
         address lender = uint256(order.orderType) < 4 ? order.signer : msg.sender;
         address borrower = uint256(order.orderType) >= 4 ? order.signer : msg.sender;
 
-        bytes32 orderHash = _createOrder(order, lender, borrower);
+        _createOrder(order, lender, borrower, tokenId);
         // Goes through the follwing procedure:
         // 1. Creates an order
         // 2. transfers the NFT to the borrower
         // 3. transfers the funds from the borrower to the respecitve recipients
         if (order.orderType == OrderType.ETH_TO_ERC721) {
-            IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
+            IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, tokenId);
 
             _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
         } else if (order.orderType == OrderType.ETH_TO_ERC1155) {
-            IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId, order.amount, "");
+            IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, tokenId, order.amount, "");
 
             _transferETH(order.signer, order.fee, order.premiumCollection, order.premiumTokenId);
         } else if (order.orderType == OrderType.ERC20_TO_ERC721) {
-            IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId);
+            IERC721(order.collection).safeTransferFrom(order.signer, msg.sender, tokenId);
 
             _transferERC20(
                 msg.sender,
@@ -136,7 +136,7 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         } else if (order.orderType == OrderType.ERC20_TO_ERC1155) {
-            IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, order.tokenId, order.amount, "");
+            IERC1155(order.collection).safeTransferFrom(order.signer, msg.sender, tokenId, order.amount, "");
 
             _transferERC20(
                 msg.sender,
@@ -148,7 +148,7 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         } else if (order.orderType == OrderType.ERC721_TO_ERC20) {
-            IERC721(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId);
+            IERC721(order.collection).safeTransferFrom(msg.sender, order.signer, tokenId);
 
             _transferERC20(
                 order.signer,
@@ -160,7 +160,7 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         } else if (order.orderType == OrderType.ERC1155_TO_ERC20) {
-            IERC1155(order.collection).safeTransferFrom(msg.sender, order.signer, order.tokenId, order.amount, "");
+            IERC1155(order.collection).safeTransferFrom(msg.sender, order.signer, tokenId, order.amount, "");
 
             _transferERC20(
                 order.signer,
@@ -172,21 +172,6 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
                 order.premiumTokenId
             );
         }
-
-        emit OrderFulfilled(
-            orderHash,
-            lender,
-            borrower,
-            order.orderType,
-            // order.nonce,
-            order.collection,
-            order.tokenId,
-            order.amount,
-            order.collateral,
-            order.fee,
-            order.currency,
-            block.timestamp + order.duration
-        );
     }
 
     /**
@@ -262,31 +247,62 @@ contract Dyve is IDyve, ReentrancyGuard, Ownable, EIP712("Dyve", "1") {
     }
 
     /**
+     * @notice retrieves the tokenId based on the orderType of the order
+     * @param additionalParameters the bytes from the taker ask in the instance of it being a collection offer
+     * @param order the associated order
+     */
+    function _getTokenId(bytes calldata additionalParameters, OrderTypes.MakerOrder calldata order)
+        internal
+        pure
+        returns (uint256)
+    {
+        if (uint256(order.orderType) < 6) {
+            return order.tokenId;
+        } else {
+            return abi.decode(additionalParameters, (uint256));
+        }
+    }
+
+    /**
      * @notice Creates an Order
      * @dev only stores the hash of the order
-     * @param makerOrder the order information
+     * @param order the order information
      * @param lender the lender of the order
      * @param borrower the borrower of the order
      */
-    function _createOrder(OrderTypes.MakerOrder calldata makerOrder, address lender, address borrower)
+    function _createOrder(OrderTypes.MakerOrder calldata order, address lender, address borrower, uint256 tokenId)
         internal
-        returns (bytes32 orderHash)
     {
         // reimplementation of hasOrder since hashOrder requires the parameter to be calldata
-        orderHash = keccak256(
+        bytes32 orderHash = keccak256(
             abi.encode(
-                makerOrder.orderType,
+                order.orderType,
                 lender,
                 borrower,
-                makerOrder.collection,
-                makerOrder.tokenId,
-                block.timestamp + makerOrder.duration,
-                makerOrder.amount,
-                makerOrder.collateral,
-                makerOrder.currency
+                order.collection,
+                tokenId,
+                block.timestamp + order.duration,
+                order.amount,
+                order.collateral,
+                order.currency
             )
         );
         orders[orderHash] = OrderStatus.BORROWED;
+
+        emit OrderCreated(
+            orderHash,
+            lender,
+            borrower,
+            order.orderType,
+            // order.nonce,
+            order.collection,
+            tokenId,
+            order.amount,
+            order.collateral,
+            order.fee,
+            order.currency,
+            block.timestamp + order.duration
+        );
     }
 
     /**
